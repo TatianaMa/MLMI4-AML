@@ -3,9 +3,11 @@ import tensorflow as tf
 import argparse
 
 from baseline import baseline_model_fn
+from bayes_mnist import bayes_mnist_model_fn
 
 models = {
-    "baseline": baseline_model_fn
+    "baseline": baseline_model_fn,
+    "bayes_mnist": bayes_mnist_model_fn
 }
 
 def run(args):
