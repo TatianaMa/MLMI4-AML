@@ -71,3 +71,12 @@ Currently there are two possible options for models:
 |-----------------|----------------|-----------------------------------------------------------------------------|
 | ``baseline``    | Baseline Model | 2 Layer (800 unit) Fully Connected NN with ReLU activation MNIST classifier |
 | ``bayes_mnist`` | Bayesian MNIST | work in progress                                                            |
+
+### Running TensorBoard
+To start TensorBoard first make sure to activate virtual environment and then launch TensorBoard by specifying the log directory e.g. /tmp/mnist_baseline_model/.
+
+```
+source venv/bin/activate
+(venv)> tensorboard --logdir /tmp/mnist_baseline_model/
+```
+Access TensorBoard on the generated URL.
