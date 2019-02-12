@@ -14,6 +14,20 @@ def create_model(features, params, labels):
 
     """
 
+    prior_fns = {
+        "gaussian": create_gaussian_prior,
+        "mixture": create_mixture_prior
+    }
+
+    try:
+        prior_fn = prior_fns[params["prior"]]
+
+        print("Using {} prior!".format(params["prior"]))
+    except KeyError as e:
+
+        print("No prior specified (possibilities: {}). Using standard Gaussian!".format(prior_fns.keys()))
+        prior_fn = None
+
     input_shape = [-1, 28 * 28]
 
     # Input layer
@@ -48,9 +62,25 @@ def create_model(features, params, labels):
     loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
     kl_divergence = kld1 + kld2 + kld3
 
-    #kl_coeff = 
+    # the global step is the batch number
+    batch_number = tf.train.get_global_step()
 
-    loss = 1./600 * kl_divergence + loss
+    kl_coeffs = {
+        # if batch_number > 30, we just set the coefficient to 0, otherwise to (1/2)^batch_number
+        "geometric": tf.pow(0.5, tf.cast(batch_number + 1, tf.float32)) * tf.squeeze(tf.cast(tf.greater(batch_number, 30), tf.float32)),
+
+        # Since we rely on the user passing the number of batches as a param, we need to check
+        "uniform": 1./float(params["num_batches"]) if "kl_coeff" in params and "num_batches" in params else 1.
+    }
+
+    try:
+        kl_coeff = kl_coeffs[params["kl_coeff"]]
+
+    except KeyError as e:
+
+        raise KeyError("kl_coeff must be one of {}".format(kl_coeffs.keys()))
+
+    loss = kl_coeff * kl_divergence + loss
 
     return logits, loss
 
@@ -59,9 +89,11 @@ def create_weights_and_biases(units_prev, units_next):
     # Weights
     # ========================
 
-    init = tf.zeros_initializer()
-    weight_mu = tf.get_variable(name="weight_mu", shape=[units_prev, units_next], initializer=init)
-    weight_rho = tf.get_variable(name="weight_rho", shape=[units_prev, units_next], initializer=init)
+    mu_init = tf.initializers.random_normal(mean=0., stddev=.1)
+    rho_init = tf.initializers.random_normal(mean=-3., stddev=.1)
+
+    weight_mu = tf.get_variable(name="weight_mu", shape=[units_prev, units_next], initializer=mu_init)
+    weight_rho = tf.get_variable(name="weight_rho", shape=[units_prev, units_next], initializer=rho_init)
 
     # sigma = log(1 + exp(rho))
     weight_sigma = tf.nn.softplus(weight_rho)
@@ -73,8 +105,8 @@ def create_weights_and_biases(units_prev, units_next):
     # Biases
     # ========================
 
-    bias_mu = tf.get_variable(name="bias_mu", shape=[units_next], initializer=init)
-    bias_rho = tf.get_variable(name="bias_rho", shape=[units_next], initializer=init)
+    bias_mu = tf.get_variable(name="bias_mu", shape=[units_next], initializer=mu_init)
+    bias_rho = tf.get_variable(name="bias_rho", shape=[units_next], initializer=rho_init)
 
     # sigma = log(1 + exp(rho))
     bias_sigma = tf.nn.softplus(bias_rho)
@@ -108,7 +140,7 @@ def variational_dense(inputs,
             dense = activation(dense)
 
         if prior_fn is None:
-            prior = create_gaussian_prior({"mu":0., "sigma":1.})
+            prior = create_gaussian_prior({"mu":0., "sigma":0.})
         else:
             prior = prior_fn(params)
 
@@ -124,7 +156,7 @@ def variational_dense(inputs,
     return dense, kl_divergence
 
 def create_gaussian_prior(params):
-    prior = tfd.Normal(loc=params["mu"], scale=params["sigma"])
+    prior = tfd.Normal(loc=params["mu"], scale=tf.exp(-params["sigma"]))
     return prior
 
 def create_mixture_prior(params):
@@ -138,14 +170,27 @@ def create_mixture_prior(params):
 
 
 def bayes_mnist_model_fn(features, labels, mode, params):
+
+    if "learning_rate" not in params:
+        raise KeyError("No learning rate specified!")
+
+    optimizers = {
+        "sgd": tf.train.GradientDescentOptimizer(learning_rate=params["learning_rate"]),
+        "adam": tf.train.AdamOptimizer(learning_rate=params["learning_rate"]),
+        "rmsprop": tf.train.RMSPropOptimizer(learning_rate=params["learning_rate"])
+    }
+
     logits, loss = create_model(features, params, labels)
     predictions = tf.argmax(input=logits, axis=1)
     if mode == tf.estimator.ModeKeys.PREDICT:
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
-        #optimizer = tf.train.GradientDescentOptimizer(learning_rate=LEARNING_RATE)
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=1e-4)
+        try:
+            optimizer = optimizers[params["optimizer"]]
+        except KeyError as e:
+            raise KeyError("No optimizer specified! Possibilities: {}".format(optimizers.keys()))
+
         train_op = optimizer.minimize(loss=loss,
                                       global_step=tf.train.get_global_step())
 
