@@ -3,7 +3,8 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 tfd = tfp.distributions
 
-def create_model(features, params):
+LEARNING_RATE = 1e-5
+def create_model(features, params, labels):
     """
     Builds the computation graph for the baseline model.
 
@@ -16,86 +17,111 @@ def create_model(features, params):
     input_shape = [-1, 28 * 28]
 
     # Input layer
-    input_layer = tf.reshape(features["x"], input_shape)
+    input_layer = tf.reshape(features, input_shape)
 
-    weights, biases = create_weights_and_biases(inputs=input_layer,
-                                                units=params["hidden_units"])
+    dense1, kld1 = variational_dense(
+        inputs=input_layer,
+        units=params["hidden_units"],
+        name="variational_dense_1"
+    )
+
+    dense2, kld2 = variational_dense(
+        inputs=dense1,
+        units=params["hidden_units"],
+        name="variational_dense_2"
+    )
 
     # Output Layer
-    logits = tf.layers.dense(inputs=dense2, units=10)
+    logits, kld3 = variational_dense(inputs=dense2,
+                                    units=10,
+                                    activation=None,
+                                    name="variational_dense_out")
 
-    return logits
+    loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
+    kl_divergence = kld1 + kld2 + kld3
 
-def create_weights_and_biases(inputs, units):
+    loss = loss + kl_divergence
+
+    return logits, loss
+
+def create_weights_and_biases(units_prev, units_next):
     # ========================
     # Weights
     # ========================
 
-    weight_mu = tf.Variable("mu_matrix", [units, inputs], initializer=tf.zero_initializer)
-    weight_rho = tf.Variable("sigma_matrix", [units, inputs], initializer=tf.zero_initializer)
+    init = tf.zeros_initializer()
+    weight_mu = tf.get_variable(name="weight_mu", shape=[units_prev, units_next], initializer=init)
+    weight_rho = tf.get_variable(name="weight_rho", shape=[units_prev, units_next], initializer=init)
 
     # sigma = log(1 + exp(rho))
-    weight_sigma = log1pexp(weight_rho)
+    weight_sigma = tf.nn.softplus(weight_rho)
 
     # w = mu + sigma * epsilon
-    weight_sample = # TODO
+    weight_dist = tfd.Normal(loc=weight_mu, scale=weight_sigma)
 
     # ========================
     # Biases
     # ========================
 
-    bias_mu = tf.Variable("mu_matrix", [units], initializer=tf.zero_initializer)
-    bias_rho = tf.Variable("sigma_matrix", [units], initializer=tf.zero_initializer)
+    bias_mu = tf.get_variable(name="bias_mu", shape=[units_next], initializer=init)
+    bias_rho = tf.get_variable(name="bias_rho", shape=[units_next], initializer=init)
 
     # sigma = log(1 + exp(rho))
-    bias_sigma = log1pexp(bias_rho)
+    bias_sigma = tf.nn.softplus(bias_rho)
 
-    # epsilon ~ N(0, I)
-    bias_epsilon = tfd.Normal(loc=0, scale=[1]).sample([units])
+    # b = mu + sigma * epsilon
+    bias_dist = tfd.Normal(loc=bias_mu, scale=bias_sigma)
 
-    # w = mu + sigma * epsilon
-    bias_sample = bias_mu + tf.math.multiply(bias_sigma, bias_epsilon)
+    return weight_dist, bias_dist
 
-@tf.custom_gradient
-def log1pexp(x):
+def variational_dense(inputs,
+                  units,
+                  name="variational_dense",
+                  activation=tf.nn.relu,
+                  prior_fn=None,
+                  params=None):
     """
-    Calculates the function log(1 + exp(x)), providing an efficient, numerically stable
-    gradient function for it as well.
-
-    Taken from https://www.tensorflow.org/api_docs/python/tf/custom_gradient
+    prior_fn(units_prev, units_next) -> tfd.Distribution
     """
-    e = tf.exp(x)
+    with tf.variable_scope(name):
+        weight_dist, bias_dist = create_weights_and_biases(
+            units_prev=inputs.shape[1],
+            units_next=units
+        )
 
-    def grad(dy):
-        return dy * (1 - 1 / (1 + e))
+        weights = weight_dist.sample()
+        biases = bias_dist.sample()
 
-    return tf.log(1 + e), grad
+        dense = tf.matmul(inputs, weights) + biases
 
-@tf.custom_gradient
-def location_scale_reparametrisation(*x):
-    """
-    Calculates the function mu + sigma * epsilon, providing also the Bayesian gradient.
-    """
+        if activation is not None:
+            dense = activation(dense)
 
-    mu, sigma = x
+        if prior_fn is None:
+            prior = create_gaussian_prior({"mu":0., "sigma":1.})
+        else:
+            prior = prior_fn(params)
 
-    # epsilon ~ N(0, I)
-    epsilon = tfd.Normal(loc=0, scale=[1]).sample(tf.shape(mu))
+        weight_prior_lp = prior.log_prob(weights)
+        bias_prior_lp = prior.log_prob(biases)
 
-    w = mu + tf.math.multiply(sigma, epsilon)
+        weight_var_post_lp = weight_dist.log_prob(weights)
+        bias_var_post_lp = bias_dist.log_prob(biases)
 
-    def grad(*dy):
-        return None # TODO
+        kl_divergence = tf.reduce_sum(weight_var_post_lp - weight_prior_lp)
+        kl_divergence += tf.reduce_sum(bias_var_post_lp - bias_prior_lp)
 
-    return w, grad
+    return dense, kl_divergence
 
+def create_gaussian_prior(params):
+    prior = tfd.Normal(loc=params["mu"], scale=params["sigma"])
+    return prior
 
 def bayes_mnist_model_fn(features, labels, mode, params):
+    logits, loss = create_model(features, params, labels)
+    predictions = tf.argmax(input=logits, axis=1)
     if mode == tf.estimator.ModeKeys.PREDICT:
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
-
-    loss = tf.losses.sparse_softmax_cross_entropy(labels=labels,
-                                                  logits=logits)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         optimizer = tf.train.GradientDescentOptimizer(learning_rate=LEARNING_RATE)
@@ -103,7 +129,7 @@ def bayes_mnist_model_fn(features, labels, mode, params):
                                       global_step=tf.train.get_global_step())
 
         accuracy = tf.metrics.accuracy(labels=labels,
-                                       predictions=predictions["classes"])
+                                       predictions=predictions)
 
         # Summary statistic for TensorBoard
         tf.summary.scalar('train_accuracy', accuracy[1])
@@ -115,7 +141,7 @@ def bayes_mnist_model_fn(features, labels, mode, params):
     if mode == tf.estimator.ModeKeys.EVAL:
         eval_metric_ops = {
             "accuracy": tf.metrics.accuracy(labels=labels,
-                                            predictions=predictions["classes"])
+                                            predictions=predictions)
         }
 
         return tf.estimator.EstimatorSpec(mode=mode,

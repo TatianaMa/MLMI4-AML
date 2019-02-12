@@ -7,6 +7,7 @@
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras.layers import Dense
 
 LEARNING_RATE = 1e-4
 
@@ -23,24 +24,24 @@ def create_model(features, params):
     input_shape = [-1, 28 * 28]
 
     # Input layer
-    input_layer = tf.reshape(features["x"], input_shape)
+    input_layer = tf.reshape(features, input_shape)
 
     # Dense Layer #1
-    dense1 = tf.layers.dense(
-        inputs=input_layer,
+    dense1 = Dense(
         units=params['hidden_units'],
         activation=tf.nn.relu
-    )
+    ).apply(input_layer)
 
     # Dense Layer #2
-    dense2 = tf.layers.dense(
-        inputs=dense1,
+    dense2 = Dense(
         units=params['hidden_units'],
         activation=tf.nn.relu
-    )
+    ).apply(dense1)
 
     # Output Layer
-    logits = tf.layers.dense(inputs=dense2, units=10)
+    logits = Dense(
+        units=10
+    ).apply(dense2)
 
     return logits
 
@@ -81,7 +82,7 @@ def baseline_model_fn(features, labels, mode, params):
 
     if mode == tf.estimator.ModeKeys.EVAL:
         eval_metric_ops = {
-            "accuracy": tf.metrics.accuracy(labels=labels,
+            "accuracy": tf.keras.metrics.accuracy(labels=labels,
                                             predictions=predictions["classes"])
         }
 
