@@ -18,7 +18,10 @@ def run(args):
                                         model_dir="/tmp/mnist_baseline_model",
                                         params={
                                             "data_format": "channels_last",
-                                            "hidden_units": 800
+                                            "hidden_units": 800,
+                                            "mix_prop": 0.75,
+                                            "sigma1": 0.,
+                                            "sigma2": 6.
                                         })
 
 

@@ -22,25 +22,35 @@ def create_model(features, params, labels):
     dense1, kld1 = variational_dense(
         inputs=input_layer,
         units=params["hidden_units"],
-        name="variational_dense_1"
+        name="variational_dense_1",
+        prior_fn=create_mixture_prior,
+        params=params
     )
 
     dense2, kld2 = variational_dense(
         inputs=dense1,
         units=params["hidden_units"],
-        name="variational_dense_2"
+        name="variational_dense_2",
+        prior_fn=create_mixture_prior,
+        params=params
     )
 
     # Output Layer
     logits, kld3 = variational_dense(inputs=dense2,
-                                    units=10,
-                                    activation=None,
-                                    name="variational_dense_out")
+                                     units=10,
+                                     activation=None,
+                                     name="variational_dense_out",
+                                     prior_fn=create_mixture_prior,
+                                     params=params
+    )
+
 
     loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
     kl_divergence = kld1 + kld2 + kld3
 
-    loss = loss + kl_divergence
+    #kl_coeff = 
+
+    loss = 1./600 * kl_divergence + loss
 
     return logits, loss
 
@@ -117,6 +127,16 @@ def create_gaussian_prior(params):
     prior = tfd.Normal(loc=params["mu"], scale=params["sigma"])
     return prior
 
+def create_mixture_prior(params):
+    prior = tfd.Mixture(
+        cat=tfd.Categorical(probs=[params["mix_prop"], 1. - params["mix_prop"]]),
+        components=[
+            tfd.Normal(loc=0., scale=tf.exp(-params["sigma1"])),
+            tfd.Normal(loc=0., scale=tf.exp(-params["sigma2"])),
+        ])
+    return prior
+
+
 def bayes_mnist_model_fn(features, labels, mode, params):
     logits, loss = create_model(features, params, labels)
     predictions = tf.argmax(input=logits, axis=1)
@@ -124,7 +144,8 @@ def bayes_mnist_model_fn(features, labels, mode, params):
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate=LEARNING_RATE)
+        #optimizer = tf.train.GradientDescentOptimizer(learning_rate=LEARNING_RATE)
+        optimizer = tf.train.RMSPropOptimizer(learning_rate=1e-4)
         train_op = optimizer.minimize(loss=loss,
                                       global_step=tf.train.get_global_step())
 
