@@ -18,7 +18,7 @@ def run(args):
                                         model_dir="/tmp/mnist_baseline_model",
                                         params={
                                             "data_format": "channels_last",
-                                            "hidden_units": 800,
+                                            "hidden_units": 400,
                                             "prior": "mixture",
                                             "sigma": 0.,
                                             "mix_prop": 0.25,
@@ -54,7 +54,7 @@ def run(args):
 
 def mnist_input_fn(data, labels):
     dataset = tf.data.Dataset.from_tensor_slices((data, labels))
-    dataset = dataset.shuffle(10000)
+    dataset = dataset.shuffle(60000)
     dataset = dataset.repeat(10)
     dataset = dataset.map(mnist_parse_fn)
     dataset = dataset.batch(128)

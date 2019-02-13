@@ -59,7 +59,10 @@ def create_model(features, params, labels):
     )
 
 
-    loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
+    negative_log_likelihood = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, 
+                                                                            logits=logits)
+    negative_log_likelihood = tf.reduce_sum(negative_log_likelihood)
+
     kl_divergence = kld1 + kld2 + kld3
 
     # the global step is the batch number
@@ -80,7 +83,7 @@ def create_model(features, params, labels):
 
         raise KeyError("kl_coeff must be one of {}".format(kl_coeffs.keys()))
 
-    loss = kl_coeff * kl_divergence + loss
+    loss = kl_coeff * kl_divergence + negative_log_likelihood
 
     return logits, loss
 
@@ -90,7 +93,8 @@ def create_weights_and_biases(units_prev, units_next):
     # ========================
 
     mu_init = tf.initializers.random_normal(mean=0., stddev=.1)
-    rho_init = tf.initializers.random_normal(mean=-3., stddev=.1)
+    # rho_init = tf.initializers.random_normal(mean=-3., stddev=.1)
+    rho_init = tf.initializers.constant(-3)
 
     weight_mu = tf.get_variable(name="weight_mu", shape=[units_prev, units_next], initializer=mu_init)
     weight_rho = tf.get_variable(name="weight_rho", shape=[units_prev, units_next], initializer=rho_init)
