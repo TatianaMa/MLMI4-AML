@@ -61,11 +61,11 @@ def create_model(features, params, labels):
 
 
     # the global step is the batch number
-    batch_number = tf.train.get_global_step()
+    batch_number = tf.cast(tf.train.get_global_step(), tf.float32)
 
     kl_coeffs = {
         # if batch_number > 30, we just set the coefficient to 0, otherwise to (1/2)^batch_number
-        "geometric": tf.pow(0.5, tf.cast(batch_number + 1, tf.float32)) * tf.squeeze(tf.cast(tf.greater(batch_number, 30), tf.float32)),
+        "geometric": tf.pow(0.5, batch_number + 1) * tf.squeeze(tf.cast(tf.greater(30., batch_number), tf.float32)),
 
         # Since we rely on the user passing the number of batches as a param, we need to check
         "uniform": 1./float(params["num_batches"]) if "kl_coeff" in params and "num_batches" in params else 1.

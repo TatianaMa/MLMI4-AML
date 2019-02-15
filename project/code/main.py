@@ -21,17 +21,17 @@ def run(args):
                                         model_dir=args.model_dir,
                                         params={
                                             "data_format": "channels_last",
-                                            "hidden_units": 400,
+                                            "hidden_units": 1200,
                                             "prior": "mixture",
                                             "sigma": 0.,
                                             "mix_prop": 0.25,
                                             "sigma1": 1.,
                                             "sigma2": 6.,
-                                            #"kl_coeff": "geometric",
-                                            "kl_coeff": "uniform",
+                                            "kl_coeff": "geometric",
+                                            # "kl_coeff": "uniform",
                                             "num_batches": MNIST_TRAIN_SIZE // 128,
                                             "optimizer": "sgd",
-                                            "learning_rate": 1e-3
+                                            "learning_rate": 1e-5
                                         })
 
 
