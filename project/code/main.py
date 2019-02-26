@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 import argparse
 import os, tempfile
+import matplotlib.pyplot as plt
 
 from baseline import baseline_model_fn
 from bayes_mnist import bayes_mnist_model_fn
@@ -64,6 +65,17 @@ def mnist_input_fn(data, labels, num_epochs=10, batch_size=128, shuffle_samples=
 
     return dataset
 
+def sine_regression_input_fn():
+    xs = np.linspace(start=0, stop=1, num=30)
+    eps = np.random.normal(loc=0., scale=0.02, size=[30])
+
+    ys = xs + 0.3 * np.sin(2*np.pi * (xs + eps)) + 0.3 * np.sin(4*np.pi * (xs + eps)) + eps
+
+    plt.plot(xs, ys)
+
+    plt.show()
+
+
 def mnist_parse_fn(data, labels):
     return (tf.cast(data, tf.float32)/126., tf.cast(labels, tf.int32))
 
@@ -100,4 +112,5 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    run(args)
+    sine_regression_input_fn()
+    #run(args)
