@@ -99,4 +99,19 @@ def ELBO_with_logits(logits, kl_divergences, kl_coeff, labels):
 
     elbo = kl_coeff * kl_divergence + negative_log_likelihood
 
-    return elbo
+    return elbo, kl_divergence, negative_log_likelihood
+
+def ELBO_with_MSE(predictions, kl_divergences, kl_coeff, labels):
+    negative_log_likelihood = tf.losses.mean_squared_error(predictions=tf.reshape(predictions, [-1, 1]),
+                                                           labels=labels)
+
+    # predictions = tf.reshape(predictions, [-1])
+    # labels = tf.reshape(labels, [-1])
+
+    # negative_log_likelihood = tf.reduce_sum(tf.square(predictions - labels))
+
+    kl_divergence = kl_coeff * sum(kl_divergences)
+
+    elbo = kl_divergence + negative_log_likelihood
+
+    return elbo, kl_divergence, negative_log_likelihood
