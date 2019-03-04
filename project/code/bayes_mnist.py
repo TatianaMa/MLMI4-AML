@@ -60,30 +60,7 @@ def create_model(features, params, labels):
     )
 
 
-    # the global step is the batch number
-    batch_number = tf.train.get_global_step()
-
-    kl_coeffs = {
-        # if batch_number > 30, we just set the coefficient to 0, otherwise to (1/2)^batch_number
-        "geometric": tf.pow(0.5, tf.cast(batch_number + 1, tf.float32)) * tf.squeeze(tf.cast(tf.greater(batch_number, 30), tf.float32)),
-
-        # Since we rely on the user passing the number of batches as a param, we need to check
-        "uniform": 1./float(params["num_batches"]) if "kl_coeff" in params and "num_batches" in params else 1.
-    }
-
-    try:
-        kl_coeff = kl_coeffs[params["kl_coeff"]]
-
-    except KeyError as e:
-
-        raise KeyError("kl_coeff must be one of {}".format(kl_coeffs.keys()))
-
-    loss = vl.ELBO_with_logits(logits=logits,
-                               kl_divergences=[kld1, kld2, kld3],
-                               kl_coeff=kl_coeff,
-                               labels=labels)
-
-    return logits, loss
+    return logits, [kld1, kld2, kld3]
 
 
 def bayes_mnist_model_fn(features, labels, mode, params):
@@ -97,10 +74,36 @@ def bayes_mnist_model_fn(features, labels, mode, params):
         "rmsprop": tf.train.RMSPropOptimizer(learning_rate=params["learning_rate"])
     }
 
-    logits, loss = create_model(features, params, labels)
+    logits, klds = create_model(features, params, labels)
     predictions = tf.argmax(input=logits, axis=1)
+
     if mode == tf.estimator.ModeKeys.PREDICT:
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
+
+    # the global step is the batch number
+    batch_number = tf.train.get_global_step() // params["kl_coeff_decay_rate"]
+
+    kl_coeffs = {
+        # if batch_number > 30, we just set the coefficient to 0, otherwise to (1/2)^batch_number
+        "geometric": tf.pow(0.5, tf.cast(batch_number + 1, tf.float32)) * tf.cast(tf.less(batch_number, 30), tf.float32),
+
+        # Since we rely on the user passing the number of batches as a param, we need to check
+        "uniform": 1./float(params["num_batches"]) if "kl_coeff" in params and "num_batches" in params else 1.
+    }
+
+    try:
+        kl_coeff = kl_coeffs[params["kl_coeff"]]
+
+    except KeyError as e:
+
+        raise KeyError("kl_coeff must be one of {}".format(kl_coeffs.keys()))
+
+    loss, kld, loglik = vl.ELBO_with_logits(logits=logits,
+                               kl_divergences=klds,
+                               kl_coeff=kl_coeff,
+                               labels=labels)
+
+
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         try:
@@ -116,6 +119,9 @@ def bayes_mnist_model_fn(features, labels, mode, params):
 
         # Summary statistic for TensorBoard
         tf.summary.scalar('train_accuracy', accuracy[1])
+        tf.summary.scalar('train_KL_coeff', kl_coeff)
+        tf.summary.scalar('train_KL', kld)
+        tf.summary.scalar('train_log_likelihood', loglik)
 
 
         # Weights summary

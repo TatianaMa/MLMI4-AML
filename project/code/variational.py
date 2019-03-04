@@ -46,7 +46,9 @@ def variational_dense(inputs,
     prior_fn(units_prev, units_next) -> tfd.Distribution
     """
 
-    with tf.variable_scope(name):
+    # Reuse the variables in this scope, this is crucial for
+    # being able to sample multiple times for the same input
+    with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
         weight_dist, bias_dist = create_weights_and_biases(
             units_prev=inputs.shape[1],
             units_next=units
@@ -101,9 +103,8 @@ def ELBO_with_logits(logits, kl_divergences, kl_coeff, labels):
 
     return elbo, kl_divergence, negative_log_likelihood
 
-def ELBO_with_MSE(predictions, kl_divergences, kl_coeff, labels):
-    negative_log_likelihood = tf.losses.mean_squared_error(predictions=tf.reshape(predictions, [-1, 1]),
-                                                           labels=labels)
+def ELBO_with_MSE(predictions_list, kl_divergences, kl_coeff, labels):
+    negative_log_likelihood = sum([tf.losses.mean_squared_error(predictions=tf.reshape(predictions, [-1, 1]), labels=labels) for predictions in predictions_list])
 
     # predictions = tf.reshape(predictions, [-1])
     # labels = tf.reshape(labels, [-1])

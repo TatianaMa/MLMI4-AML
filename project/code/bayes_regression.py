@@ -31,37 +31,47 @@ def create_model(features, labels, params):
 
     input_shape = [-1] + params["input_dims"]
 
-    # Input layer
+        # Input layer
     input_layer = tf.reshape(features, input_shape)
 
-    dense1, kld1 = vl.variational_dense(
-        inputs=input_layer,
-        name="variational_dense_1",
-        units=params["hidden_units"],
-        prior_fn=prior_fn,
-        params=params
-    )
+    logits_list = []
 
-    dense2, kld2 = vl.variational_dense(
-        inputs=dense1,
-        name="variational_dense_2",
-        units=params["hidden_units"],
-        prior_fn=prior_fn,
-        params=params
-    )
+    klds_list = []
 
+    for i in range(params["num_mc_samples"]):
 
-    # Output Layer
-    logits, kld3 = vl.variational_dense(inputs=dense2,
-                                        units=params["output_dims"],
-                                        activation=None,
-                                        name="variational_dense_out",
-                                        prior_fn=prior_fn,
-                                        params=params
-    )
+        dense1, kld1 = vl.variational_dense(
+            inputs=input_layer,
+            name="variational_dense_1",
+            units=params["hidden_units"],
+            prior_fn=prior_fn,
+            params=params
+        )
+
+        dense2, kld2 = vl.variational_dense(
+            inputs=dense1,
+            name="variational_dense_2",
+            units=params["hidden_units"],
+            prior_fn=prior_fn,
+            params=params
+        )
 
 
-    return logits, [kld1, kld2, kld3]
+        # Output Layer
+        logits, kld3 = vl.variational_dense(inputs=dense2,
+                                            units=1,
+                                            activation=None,
+                                            name="variational_dense_out",
+                                            prior_fn=prior_fn,
+                                            params=params
+        )
+
+        logits_list.append(logits)
+        klds_list.append(sum([kld1, kld2, kld3]))
+
+    kld = sum(klds_list) #/ float(params["num_mc_samples"])
+
+    return logits_list, kld
 
 
 def bayes_regression_model_fn(features, labels, mode, params):
@@ -75,7 +85,10 @@ def bayes_regression_model_fn(features, labels, mode, params):
         "rmsprop": tf.train.RMSPropOptimizer(learning_rate=params["learning_rate"])
     }
 
-    predictions, klds = create_model(features, labels, params)
+    pred_list, kld = create_model(features, labels, params)
+
+    predictions = sum(pred_list)
+
     if mode == tf.estimator.ModeKeys.PREDICT:
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
@@ -98,9 +111,9 @@ def bayes_regression_model_fn(features, labels, mode, params):
 
         raise KeyError("kl_coeff must be one of {}".format(kl_coeffs.keys()))
 
-    loss, kl, loglik = vl.ELBO_with_MSE(predictions=predictions,
-                            kl_divergences=klds,
-                            kl_coeff=kl_coeff,
+    loss, kl, loglik = vl.ELBO_with_MSE(predictions_list=pred_list,
+                                        kl_divergences=[kld],
+                                        kl_coeff=kl_coeff,
                                         labels=tf.reshape(labels, [-1, 1]))
 
 

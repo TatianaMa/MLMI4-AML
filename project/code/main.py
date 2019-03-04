@@ -23,18 +23,19 @@ def run(args):
                                             "data_format": "channels_last",
                                             "input_dims": [1],
                                             "output_dims": 1,
-                                            "hidden_units": 60,
+                                            "hidden_units": 400,
+                                            "num_mc_samples": 5,
                                             "prior": "mixture",
                                             "sigma": 0.,
                                             "mu":0.,
                                             "mix_prop": 0.25,
-                                            "sigma1": 1.,
-                                            "sigma2": 6.,
-                                            #"kl_coeff": "geometric",
-                                            "kl_coeff_decay_rate": 1000,
-                                            "kl_coeff": "uniform",
-                                            "num_batches": MNIST_TRAIN_SIZE // 128,
-                                            "optimizer": "rmsprop",
+                                            "sigma1": 2.3,
+                                            "sigma2": 0.3,
+                                            "kl_coeff": "geometric",
+                                            "kl_coeff_decay_rate": 100,
+                                            #"kl_coeff": "uniform",
+                                            "num_batches": MNIST_TRAIN_SIZE // 128, #500 // 20, #
+                                            "optimizer": "sgd",
                                             "learning_rate": 1e-3
                                         })
 
@@ -59,29 +60,30 @@ def run(args):
         print("Training finished!")
         # hooks=[logging_hook])
 
-    xs = np.linspace(start=-1, stop=2, num=100)
+    xs = np.linspace(start=-0.3, stop=1, num=100)
     #preds = [p for p in classifier.predict(tf.data.Dataset.from_tensor_slices(tf.cast(xs, tf.float32)))]
     #    results = classifier.predict(input_fn=tf.data.Dataset.from_tensor_slices(tf.cast(xs, tf.float32)))
 
-    results_overall = []
+    # results_overall = []
 
-    for i in range(20):
-        results = classifier.predict(input_fn=lambda: tf.data.Dataset.from_tensor_slices(xs.astype(np.float32)).batch(1))
-        results_overall.append([r[0] for r in results])
+    # for i in range(10):
+    #     results = classifier.predict(input_fn=lambda: tf.data.Dataset.from_tensor_slices(xs.astype(np.float32)).batch(1))
+    #     results_overall.append([r[0] for r in results])
 
-    results_overall = np.array(results_overall)
+    # results_overall = np.array(results_overall)
 
-    means = np.median(results_overall, axis=0)
-    bottom_25 = np.percentile(results_overall, 25, axis=0)
-    top_25 = np.percentile(results_overall, 75, axis=0)
+    # means = np.median(results_overall, axis=0)
+    # bottom_25 = np.percentile(results_overall, 25, axis=0)
+    # top_25 = np.percentile(results_overall, 75, axis=0)
 
-    plt.plot(xs, means)
-    #plt.plot(xs, bottom_25, color='r')
-    #plt.plot(xs, top_25, color='r')
-    plt.scatter(train_xs, train_ys, marker='x', color='k')
-    plt.show()
+    # plt.plot(xs, means)
+    # plt.plot(xs, bottom_25, color='r')
+    # plt.plot(xs, top_25, color='r')
+    # plt.scatter(train_xs, train_ys, marker='x', color='k')
+    # plt.show()
 
-    #print(eval_results)
+    eval_results = classifier.evaluate(input_fn=lambda:mnist_input_fn(eval_data, eval_labels))
+    print(eval_results)
 
 def mnist_input_fn(data, labels, num_epochs=10, batch_size=128, shuffle_samples=5000):
     dataset = tf.data.Dataset.from_tensor_slices((data, labels))
@@ -92,7 +94,7 @@ def mnist_input_fn(data, labels, num_epochs=10, batch_size=128, shuffle_samples=
 
     return dataset
 
-def create_sine_regression_input_fn(num_examples=500, num_epochs=100000, batch_size=250, shuffle_samples=1000):
+def create_sine_regression_input_fn(num_examples=500, num_epochs=1000, batch_size=20, shuffle_samples=1000):
     xs = np.random.uniform(low=0., high=0.6, size=num_examples)
     eps = np.random.normal(loc=0., scale=0.02, size=[num_examples])
 
