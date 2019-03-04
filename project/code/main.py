@@ -40,8 +40,6 @@ def run(args):
     # logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log,
     #                                           every_n_iter=50)
 
-
-
     ((train_data, train_labels),
      (eval_data, eval_labels)) = tf.keras.datasets.mnist.load_data()
 
@@ -51,7 +49,10 @@ def run(args):
         print("Training finished!")
         # hooks=[logging_hook])
 
-    eval_results = classifier.evaluate(input_fn=lambda:mnist_input_fn(eval_data, eval_labels))
+    if args.prune_weights:
+        print("Pruning weights.")
+
+    eval_results = classifier.evaluate(input_fn=lambda:mnist_input_fn(eval_data, eval_labels)
 
     print(eval_results)
 
@@ -97,7 +98,8 @@ if __name__ == "__main__":
                     help='Should we just evaluate?')
     parser.add_argument('--model_dir', type=lambda x: is_valid_file(parser, x), default='/tmp/bayes_by_backprop',
                     help='The model directory.')
-
+    parser.add_argument('--prune_weights', action="store_true", dest="prune_weights", default=False,
+                    help='Should we do weight pruning without training.')
     args = parser.parse_args()
 
     run(args)

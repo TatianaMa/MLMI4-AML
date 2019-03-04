@@ -4,7 +4,6 @@ import tensorflow_probability as tfp
 tfd = tfp.distributions
 import variational as vl
 
-LEARNING_RATE = 1e-5
 def create_model(features, params, labels):
     """
     Builds the computation graph for the baseline model.
@@ -22,10 +21,9 @@ def create_model(features, params, labels):
 
     try:
         prior_fn = prior_fns[params["prior"]]
-
         print("Using {} prior!".format(params["prior"]))
-    except KeyError as e:
 
+    except KeyError as e:
         print("No prior specified (possibilities: {}). Using standard Gaussian!".format(prior_fns.keys()))
         prior_fn = None
 
@@ -58,7 +56,6 @@ def create_model(features, params, labels):
                                         prior_fn=prior_fn,
                                         params=params
     )
-
 
     # the global step is the batch number
     batch_number = tf.cast(tf.train.get_global_step(), tf.float32)
