@@ -5,3 +5,6 @@ __pycache__
 .ipynb*
 *.ipynb
 *.pyc
+bandits/
+contextual_bandits/
+example_main.py
