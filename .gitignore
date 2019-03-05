@@ -8,3 +8,4 @@ __pycache__
 bandits/
 contextual_bandits/
 example_main.py
+TF-Sonnet-BayesByBackprop/
