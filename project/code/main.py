@@ -5,10 +5,12 @@ import os, tempfile
 
 from baseline import baseline_model_fn
 from bayes_mnist import bayes_mnist_model_fn
+from dropout_mnist import dropout_mnist_model_fn
 
 models = {
     "baseline": baseline_model_fn,
-    "bayes_mnist": bayes_mnist_model_fn
+    "bayes_mnist": bayes_mnist_model_fn,
+    "dropout_mnist": dropout_mnist_model_fn
 }
 
 MNIST_TRAIN_SIZE = 60000
@@ -21,7 +23,8 @@ def run(args):
                                         model_dir=args.model_dir,
                                         params={
                                             "data_format": "channels_last",
-                                            "hidden_units": 1200,
+                                            "hidden_units": 400,
+                                            "dropout": 0.5,
                                             "prior": "mixture",
                                             "sigma": 0.,
                                             "mix_prop": 0.25,
@@ -31,7 +34,7 @@ def run(args):
                                             # "kl_coeff": "uniform",
                                             "num_batches": MNIST_TRAIN_SIZE // 128,
                                             "optimizer": "sgd",
-                                            "learning_rate": 1e-5
+                                            "learning_rate": 1e-3
                                         })
 
 
@@ -55,7 +58,7 @@ def run(args):
 
     print(eval_results)
 
-def mnist_input_fn(data, labels, num_epochs=10, batch_size=128, shuffle_samples=5000):
+def mnist_input_fn(data, labels, num_epochs=200, batch_size=128, shuffle_samples=5000):
     dataset = tf.data.Dataset.from_tensor_slices((data, labels))
     dataset = dataset.shuffle(shuffle_samples)
     dataset = dataset.repeat(num_epochs)
