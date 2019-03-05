@@ -52,7 +52,7 @@ def run(args):
     if args.prune_weights:
         print("Pruning weights.")
 
-    eval_results = classifier.evaluate(input_fn=lambda:mnist_input_fn(eval_data, eval_labels)
+    eval_results = classifier.evaluate(input_fn=lambda:mnist_input_fn(eval_data, eval_labels))
 
     print(eval_results)
 
