@@ -1,11 +1,11 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import tensorflow as tf
 import tensorflow_probability as tfp
 tfd = tfp.distributions
 import variational as vl
 
-def create_model(features, params, labels):
+LEARNING_RATE = 1e-5
+def create_model(features, labels, params):
     """
     Builds the computation graph for the baseline model.
 
@@ -22,46 +22,59 @@ def create_model(features, params, labels):
 
     try:
         prior_fn = prior_fns[params["prior"]]
-        print("Using {} prior!".format(params["prior"]))
 
+        print("Using {} prior!".format(params["prior"]))
     except KeyError as e:
+
         print("No prior specified (possibilities: {}). Using standard Gaussian!".format(prior_fns.keys()))
         prior_fn = None
 
-    input_shape = [-1, 28 * 28]
+    input_shape = [-1] + params["input_dims"]
 
-    # Input layer
+        # Input layer
     input_layer = tf.reshape(features, input_shape)
 
-    dense1, kld1 = vl.variational_dense(
-        inputs=input_layer,
-        name="variational_dense_1",
-        units=params["hidden_units"],
-        prior_fn=prior_fn,
-        params=params
-    )
+    logits_list = []
 
-    dense2, kld2 = vl.variational_dense(
-        inputs=dense1,
-        name="variational_dense_2",
-        units=params["hidden_units"],
-        prior_fn=prior_fn,
-        params=params
-    )
+    klds_list = []
 
-    # Output Layer
-    logits, kld3 = vl.variational_dense(inputs=dense2,
-                                        units=10,
-                                        activation=None,
-                                        name="variational_dense_out",
-                                        prior_fn=prior_fn,
-                                        params=params
-    )
+    for i in range(params["num_mc_samples"]):
 
-    return logits, [kld1, kld2, kld3]
+        dense1, kld1 = vl.variational_dense(
+            inputs=input_layer,
+            name="variational_dense_1",
+            units=params["hidden_units"],
+            prior_fn=prior_fn,
+            params=params
+        )
+
+        dense2, kld2 = vl.variational_dense(
+            inputs=dense1,
+            name="variational_dense_2",
+            units=params["hidden_units"],
+            prior_fn=prior_fn,
+            params=params
+        )
 
 
-def bayes_mnist_model_fn(features, labels, mode, params):
+        # Output Layer
+        logits, kld3 = vl.variational_dense(inputs=dense2,
+                                            units=1,
+                                            activation=None,
+                                            name="variational_dense_out",
+                                            prior_fn=prior_fn,
+                                            params=params
+        )
+
+        logits_list.append(logits)
+        klds_list.append(sum([kld1, kld2, kld3]))
+
+    kld = sum(klds_list) #/ float(params["num_mc_samples"])
+
+    return logits_list, kld
+
+
+def bayes_regression_model_fn(features, labels, mode, params):
 
     if "learning_rate" not in params:
         raise KeyError("No learning rate specified!")
@@ -72,8 +85,9 @@ def bayes_mnist_model_fn(features, labels, mode, params):
         "rmsprop": tf.train.RMSPropOptimizer(learning_rate=params["learning_rate"])
     }
 
-    logits, klds = create_model(features, params, labels)
-    predictions = tf.argmax(input=logits, axis=1)
+    pred_list, kld = create_model(features, labels, params)
+
+    predictions = sum(pred_list)
 
     if mode == tf.estimator.ModeKeys.PREDICT:
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
@@ -96,11 +110,10 @@ def bayes_mnist_model_fn(features, labels, mode, params):
 
         raise KeyError("kl_coeff must be one of {}".format(kl_coeffs.keys()))
 
-    loss, kld, loglik = vl.ELBO_with_logits(logits=logits,
-                               kl_divergences=klds,
-                               kl_coeff=kl_coeff,
-                               labels=labels)
-
+    loss, kl, loglik = vl.ELBO_with_MSE(predictions_list=pred_list,
+                                        kl_divergences=[kld],
+                                        kl_coeff=kl_coeff,
+                                        labels=tf.reshape(labels, [-1, 1]))
 
 
     if mode == tf.estimator.ModeKeys.TRAIN:
@@ -112,33 +125,29 @@ def bayes_mnist_model_fn(features, labels, mode, params):
         train_op = optimizer.minimize(loss=loss,
                                       global_step=tf.train.get_global_step())
 
-        accuracy = tf.metrics.accuracy(labels=labels,
-                                       predictions=predictions)
-
         # Summary statistic for TensorBoard
-        tf.summary.scalar('train_accuracy', accuracy[1])
         tf.summary.scalar('train_KL_coeff', kl_coeff)
-        tf.summary.scalar('train_KL', kld)
+        tf.summary.scalar('train_KL', kl)
         tf.summary.scalar('train_log_likelihood', loglik)
 
 
         # Weights summary
-        layers = ["variational_dense_1", "variational_dense_2", "variational_dense_out"]
+        # layers = ["variational_dense_1", "variational_dense_2", "variational_dense_out"]
 
-        samples = []
+        # samples = []
 
-        for layer in layers:
-            for w in ["weight_", "bias_"]:
-                var = []
-                for theta in ["mu", "rho"]:
-                    var.append([v for v in tf.trainable_variables() if v.name == layer + "/" + w + theta + ":0"][0])
+        # for layer in layers:
+        #     for w in ["weight_", "bias_"]:
+        #         var = []
+        #         for theta in ["mu", "rho"]:
+        #             var.append([v for v in tf.trainable_variables() if v.name == layer + "/" + w + theta + ":0"][0])
 
-                mu = var[0]
-                sigma = tf.nn.softplus(var[1])
+        #         mu = var[0]
+        #         sigma = tf.nn.softplus(var[1])
 
-                sample = tfd.Normal(loc=mu, scale=sigma).sample()
+        #         sample = tfd.Normal(loc=mu, scale=sigma).sample()
 
-                samples.append(tf.reshape(sample, [-1]))
+        #         samples.append(tf.reshape(sample, [-1]))
 
         # tf.summary.histogram("weight/hist", tf.concat(samples, axis=0))
         # train_hooks = []
@@ -155,44 +164,33 @@ def bayes_mnist_model_fn(features, labels, mode, params):
 
     if mode == tf.estimator.ModeKeys.EVAL:
 
-        layers = ["variational_dense_1", "variational_dense_2", "variational_dense_out"]
+        layers = ["variational_dense_1",  "variational_dense_out"]
 
         samples = []
-        snrs = [] # Signal to noise ratios
-        with tf.Session() as sess:
-            for layer in layers:
-                for w in ["weight_", "bias_"]:
-                    var = []
-                    for theta in ["mu", "rho"]:
-                        var.append([v for v in tf.trainable_variables() if v.name == layer + "/" + w + theta + ":0"][0])
 
-                    mu = var[0]
-                    sigma = tf.nn.softplus(var[1])
+        for layer in layers:
+            for w in ["weight_", "bias_"]:
+                var = []
+                for theta in ["mu", "rho"]:
+                    var.append([v for v in tf.trainable_variables() if v.name == layer + "/" + w + theta + ":0"][0])
 
-                    sample = tfd.Normal(loc=mu, scale=sigma).sample()
-                    samples.append(tf.reshape(sample, [-1]))
+                mu = var[0]
+                sigma = tf.nn.softplus(var[1])
 
-                    snr = tf.math.divide(tf.math.abs(mu), sigma)
-                    snrs.append(tf.reshape(snr, [-1]))
-                    print('len ' + str(len(snrs)))
+                sample = tfd.Normal(loc=mu, scale=sigma).sample()
 
-        tf.summary.histogram("weight/snr", tf.concat(snrs, axis=0))
-        snrs = sess.run(snrs)
-        plt.hist(tf.concat(snrs, axis=0).eval())
+                samples.append(tf.reshape(sample, [-1]))
 
         eval_hooks = []
+
         eval_summary_hook = tf.train.SummarySaverHook(
             save_steps=1,
             summary_op=tf.summary.histogram("weight/hist", tf.concat(samples, axis=0)))
+
         eval_hooks.append(eval_summary_hook)
-        # eval_summary_hook2 = tf.train.SummarySaverHook(
-        #     save_steps=1,
-        #     summary_op=tf.summary.histogram("snr/hist", tf.concat(snrs, axis=0)))
-        # eval_hooks.append(eval_summary_hook2)
 
         eval_metric_ops = {
-            "accuracy": tf.metrics.accuracy(labels=labels,
-                                            predictions=predictions)
+            "ELBO": loss
         }
 
         return tf.estimator.EstimatorSpec(mode=mode,
