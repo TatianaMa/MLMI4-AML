@@ -45,9 +45,7 @@ def run(args):
                                         model_dir=args.model_dir,
                                         params={
                                             "data_format": "channels_last",
-                                            "input_dims": [1],
-                                            "output_dims": 1,
-                                            "hidden_units": 60,
+                                            "hidden_units": 400,
                                             "num_mc_samples": 1,
                                             "prior": "mixture",
                                             "sigma": 0.,
@@ -59,7 +57,7 @@ def run(args):
                                             "kl_coeff_decay_rate": 1000,
                                             "kl_coeff": "uniform",
                                             "num_batches": num_batches,
-                                            "optimizer": "sgd",
+                                            "optimizer": "adam",
                                             "learning_rate": 1e-3
                                         })
 

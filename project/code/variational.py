@@ -8,7 +8,8 @@ def create_weights_and_biases(units_prev, units_next):
     # Weights
     # ========================
 
-    mu_init = tf.initializers.random_normal(mean=0., stddev=.1)
+    mu_init = tf.initializers.glorot_uniform()
+    # mu_init = tf.initializers.random_normal(mean=0., stddev=.1)
     # rho_init = tf.initializers.random_normal(mean=-3., stddev=.1)
     rho_init = tf.initializers.constant(-3)
 

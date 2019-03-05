@@ -42,7 +42,7 @@ def run(args):
     config = {
         "training_set_size": 500,
         "num_epochs": 1000,
-        "batch_size": 20,
+        "batch_size": 1,
     }
 
     num_batches = config["training_set_size"] * config["num_epochs"] / config["batch_size"]
@@ -55,8 +55,8 @@ def run(args):
                                             "data_format": "channels_last",
                                             "input_dims": [1],
                                             "output_dims": 1,
-                                            "hidden_units": 60,
-                                            "num_mc_samples": 1,
+                                            "hidden_units": 100,
+                                            "num_mc_samples": 5,
                                             "prior": "mixture",
                                             "sigma": 0.,
                                             "mu":0.,
@@ -85,7 +85,7 @@ def run(args):
                                                             batch_size=config["batch_size"]))
         print("Training finished!")
 
-    xs = np.linspace(start=-2, stop=2, num=100)
+    xs = np.linspace(start=-0, stop=1, num=100)
 
     results_overall = []
 
