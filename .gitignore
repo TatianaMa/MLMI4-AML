@@ -5,3 +5,7 @@ __pycache__
 .ipynb*
 *.ipynb
 *.pyc
+TF-Sonnet-BayesByBackprop/
+bandits/
+contextual_bandits/
+example_main.py
