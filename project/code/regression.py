@@ -47,6 +47,8 @@ def run(args):
 
     num_batches = config["training_set_size"] * config["num_epochs"] / config["batch_size"]
 
+    print("Number of batches: {}".format(num_batches))
+
     model_fn = models[args.model]
 
     regressor = tf.estimator.Estimator(model_fn=model_fn,
@@ -56,7 +58,7 @@ def run(args):
                                             "input_dims": [1],
                                             "output_dims": 1,
                                             "hidden_units": 100,
-                                            "num_mc_samples": 5,
+                                            "num_mc_samples": 3,
                                             "prior": "mixture",
                                             "sigma": 0.,
                                             "mu":0.,
@@ -67,8 +69,8 @@ def run(args):
                                             "kl_coeff_decay_rate": 1000,
                                             "kl_coeff": "uniform",
                                             "num_batches": num_batches,
-                                            "optimizer": "sgd",
-                                            "learning_rate": 1e-5
+                                            "optimizer": "adam",
+                                            "learning_rate": 1e-4
                                         })
 
 
@@ -85,7 +87,7 @@ def run(args):
                                                             batch_size=config["batch_size"]))
         print("Training finished!")
 
-    xs = np.linspace(start=-0, stop=1, num=100)
+    xs = np.linspace(start=-1, stop=2, num=100)
 
     results_overall = []
 

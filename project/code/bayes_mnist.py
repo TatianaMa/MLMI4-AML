@@ -178,6 +178,7 @@ def bayes_mnist_model_fn(features, labels, mode, params):
 
         eval_summary_hook = tf.train.SummarySaverHook(
             save_steps=1,
+            output_dir='/tmp/bayes_mnist',
             summary_op=tf.summary.histogram("weight/hist", tf.concat(samples, axis=0)))
 
         eval_hooks.append(eval_summary_hook)

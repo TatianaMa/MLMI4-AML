@@ -81,6 +81,7 @@ def bayes_regression_model_fn(features, labels, mode, params):
 
     optimizers = {
         "sgd": tf.train.GradientDescentOptimizer(learning_rate=params["learning_rate"]),
+        "momentum": tf.train.MomentumOptimizer(learning_rate=params["learning_rate"], momentum=0.9, use_nesterov=True),
         "adam": tf.train.AdamOptimizer(learning_rate=params["learning_rate"]),
         "rmsprop": tf.train.RMSPropOptimizer(learning_rate=params["learning_rate"])
     }
@@ -130,33 +131,6 @@ def bayes_regression_model_fn(features, labels, mode, params):
         tf.summary.scalar('train_KL', kl)
         tf.summary.scalar('train_log_likelihood', loglik)
 
-
-        # Weights summary
-        # layers = ["variational_dense_1", "variational_dense_2", "variational_dense_out"]
-
-        # samples = []
-
-        # for layer in layers:
-        #     for w in ["weight_", "bias_"]:
-        #         var = []
-        #         for theta in ["mu", "rho"]:
-        #             var.append([v for v in tf.trainable_variables() if v.name == layer + "/" + w + theta + ":0"][0])
-
-        #         mu = var[0]
-        #         sigma = tf.nn.softplus(var[1])
-
-        #         sample = tfd.Normal(loc=mu, scale=sigma).sample()
-
-        #         samples.append(tf.reshape(sample, [-1]))
-
-        # tf.summary.histogram("weight/hist", tf.concat(samples, axis=0))
-        # train_hooks = []
-
-        # train_summary_hook = tf.train.SummarySaverHook(
-        #     save_steps=1,
-        #     summary_op=tf.summary.histogram("weight/hist", tf.concat(samples, axis=0)))
-
-        # train_hooks.append(train_summary_hook)
 
         return tf.estimator.EstimatorSpec(mode=mode,
                                           loss=loss,
