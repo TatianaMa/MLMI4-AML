@@ -106,10 +106,13 @@ def ELBO_with_logits(logits, kl_divergences, kl_coeff, labels):
 def ELBO_with_MSE(predictions_list, kl_divergences, kl_coeff, labels):
     negative_log_likelihood = sum([tf.losses.mean_squared_error(predictions=tf.reshape(predictions, [-1, 1]), labels=labels) for predictions in predictions_list])
 
-    # predictions = tf.reshape(predictions, [-1])
-    # labels = tf.reshape(labels, [-1])
+    # negative_log_likelihood = 0
 
-    # negative_log_likelihood = tf.reduce_sum(tf.square(predictions - labels))
+    # for predictions in predictions_list:
+    #     predictions = tf.reshape(predictions, [-1])
+    #     labels = tf.reshape(labels, [-1])
+
+    #     negative_log_likelihood = negative_log_likelihood + tf.reduce_sum(tf.square(predictions - labels))
 
     kl_divergence = kl_coeff * sum(kl_divergences)
 

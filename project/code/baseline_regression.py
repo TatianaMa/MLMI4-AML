@@ -7,7 +7,7 @@
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Dense, Dropout
 
 LEARNING_RATE = 1e-3
 
@@ -32,11 +32,15 @@ def create_model(features, params):
         activation=tf.nn.relu
     ).apply(input_layer)
 
+    dense1 = Dropout(0.5).apply(dense1)
+
     # Dense Layer #2
     dense2 = Dense(
         units=params['hidden_units'],
         activation=tf.nn.relu
     ).apply(dense1)
+
+    dense2 = Dropout(0.3).apply(dense2)
 
     # Output Layer
     logits = Dense(
