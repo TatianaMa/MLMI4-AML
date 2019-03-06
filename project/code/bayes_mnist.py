@@ -4,6 +4,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 tfd = tfp.distributions
 import variational as vl
+import logging
 
 def create_model(features, params, labels):
     """
@@ -109,6 +110,7 @@ def bayes_mnist_model_fn(features, labels, mode, params):
         except KeyError as e:
             raise KeyError("No optimizer specified! Possibilities: {}".format(optimizers.keys()))
 
+        logging.getLogger().setLevel(logging.INFO)
         train_op = optimizer.minimize(loss=loss,
                                       global_step=tf.train.get_global_step())
 
@@ -159,36 +161,39 @@ def bayes_mnist_model_fn(features, labels, mode, params):
 
         samples = []
         snrs = [] # Signal to noise ratios
-        with tf.Session() as sess:
-            for layer in layers:
-                for w in ["weight_", "bias_"]:
-                    var = []
-                    for theta in ["mu", "rho"]:
-                        var.append([v for v in tf.trainable_variables() if v.name == layer + "/" + w + theta + ":0"][0])
+        # with tf.Session() as sess:
+        for layer in layers:
+            for w in ["weight_", "bias_"]:
+                var = []
+                for theta in ["mu", "rho"]:
+                    var.append([v for v in tf.trainable_variables() if v.name == layer + "/" + w + theta + ":0"][0])
 
-                    mu = var[0]
-                    sigma = tf.nn.softplus(var[1])
+                mu = var[0]
+                # print(tf.get_default_session().run(mu))
+                sigma = tf.nn.softplus(var[1])
 
-                    sample = tfd.Normal(loc=mu, scale=sigma).sample()
-                    samples.append(tf.reshape(sample, [-1]))
+                sample = tfd.Normal(loc=mu, scale=sigma).sample()
+                samples.append(tf.reshape(sample, [-1]))
 
-                    snr = tf.math.divide(tf.math.abs(mu), sigma)
-                    snrs.append(tf.reshape(snr, [-1]))
-                    print('len ' + str(len(snrs)))
+                snr = tf.math.scalar_mul(10, tf.math.log(tf.math.divide(tf.math.abs(mu), sigma)))
+                snrs.append(tf.reshape(snr, [-1]))
+                print('len ' + str(len(snrs)))
 
-        tf.summary.histogram("weight/snr", tf.concat(snrs, axis=0))
-        snrs = sess.run(snrs)
-        plt.hist(tf.concat(snrs, axis=0).eval())
+        # tf.summary.histogram("weight/snr", tf.concat(snrs, axis=0))
+        # snrs = sess.run(snrs)
+        # plt.hist(tf.concat(snrs, axis=0).eval())
 
         eval_hooks = []
         eval_summary_hook = tf.train.SummarySaverHook(
             save_steps=1,
-            summary_op=tf.summary.histogram("weight/hist", tf.concat(samples, axis=0)))
+            summary_op=tf.summary.histogram("weight/hist", tf.concat(samples, axis=0)),
+            output_dir=params["model_dir"])
         eval_hooks.append(eval_summary_hook)
-        # eval_summary_hook2 = tf.train.SummarySaverHook(
-        #     save_steps=1,
-        #     summary_op=tf.summary.histogram("snr/hist", tf.concat(snrs, axis=0)))
-        # eval_hooks.append(eval_summary_hook2)
+        eval_summary_hook2 = tf.train.SummarySaverHook(
+            save_steps=1,
+            summary_op=tf.summary.histogram("snr/hist", tf.concat(snrs, axis=0)),
+            output_dir=params["model_dir"])
+        eval_hooks.append(eval_summary_hook2)
 
         eval_metric_ops = {
             "accuracy": tf.metrics.accuracy(labels=labels,

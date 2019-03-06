@@ -33,7 +33,7 @@ def run(args):
 
     config = {
         "training_set_size": 60000,
-        "num_epochs": 10,
+        "num_epochs": 600,
         "batch_size": 128,
     }
 
@@ -54,11 +54,12 @@ def run(args):
                                             "sigma1": 6.,
                                             "sigma2": 1.,
                                             #"kl_coeff": "geometric",
-                                            "kl_coeff_decay_rate": 1000,
+                                            "kl_coeff_decay_rate": 100,
                                             "kl_coeff": "uniform",
                                             "num_batches": num_batches,
                                             "optimizer": "adam",
-                                            "learning_rate": 1e-3
+                                            "learning_rate": 1e-3,
+                                            "model_dir": args.model_dir
                                         })
 
 
@@ -68,7 +69,7 @@ def run(args):
 
     if args.is_training:
         print("Beginning training of the {} model!".format(args.model))
-        classifier.train(input_fn=lambda:mnist_input_fn(train_data, train_labels))
+        classifier.train(input_fn=lambda:mnist_input_fn(train_data, train_labels, num_epochs=config["num_epochs"]))
         print("Training finished!")
 
     if args.prune_weights:
@@ -88,7 +89,7 @@ if __name__ == "__main__":
     parser.add_argument('--model_dir', type=lambda x: is_valid_file(parser, x), default='/tmp/bayes_by_backprop',
                     help='The model directory.')
     parser.add_argument('--prune_weights', action="store_true", dest="prune_weights", default=False,
-                    help='Should we do weight pruning without training.')
+                    help='Should we do weight pruning during evaluation.')
     args = parser.parse_args()
 
     run(args)
