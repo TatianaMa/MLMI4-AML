@@ -30,7 +30,7 @@ Go to the ``project`` folder, set up a virtual environment there and activate it
 
 ```
 > cd MLMI4-AML/project
-> virtualenv venv
+> virtualenv -p python3 env
 > source venv/bin/activate
 ```
 
