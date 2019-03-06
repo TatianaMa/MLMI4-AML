@@ -30,7 +30,7 @@ Go to the ``project`` folder, set up a virtual environment there and activate it
 
 ```
 > cd MLMI4-AML/project
-> virtualenv venv
+> virtualenv -p python3 env
 > source venv/bin/activate
 ```
 
@@ -80,3 +80,12 @@ source venv/bin/activate
 (venv)> tensorboard --logdir /tmp/mnist_baseline_model/
 ```
 Access TensorBoard on the generated URL.
+
+## Pruning Weights
+Prune weights for MNIST classification by adding the flag --prune_weights. Specify the pruning_percentile in the config dictionary (classification.py).
+
+```
+(venv)> python code/classification.py --model=bayes_mnist --model_dir=models/bayes_mnist_400 --prune_weights
+```
+
+Weights from the specified directory are pruned using the given percentile. The pruned weights are stored in a directory with the same name and a suffix pruned_98 and passed to evaluation. Add the flag --no_training if you wish to prune an already trained model.

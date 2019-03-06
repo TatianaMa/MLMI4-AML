@@ -82,7 +82,7 @@ def baseline_model_fn(features, labels, mode, params):
 
     if mode == tf.estimator.ModeKeys.EVAL:
         eval_metric_ops = {
-            "accuracy": tf.keras.metrics.accuracy(labels=labels,
+            "accuracy": tf.metrics.accuracy(labels=labels,
                                             predictions=predictions["classes"])
         }
 
