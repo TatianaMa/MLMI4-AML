@@ -131,7 +131,7 @@ def generate_new_contexts(dataset,
     possible_rewards = np.concatenate([not_eating_rewards, eating_rewards], axis=1)
     # print(possible_rewards)
 
-    oracle_rewards = np.amax(possible_rewards, axis=1)
+    oracle_rewards = np.amax(possible_rewards, axis=1).astype(np.float32)
     oracle_actions = np.argmax(possible_rewards, axis=1)
 
     # print(oracle_rewards)
@@ -140,4 +140,6 @@ def generate_new_contexts(dataset,
     total_oracle_reward = np.sum(oracle_rewards)
     # print(total_oracle_reward)
 
-    return (contexts.iloc[:, 2:].to_numpy(), not_eating_rewards, eating_rewards), oracle_rewards, oracle_actions
+    return (contexts.iloc[:, 2:].to_numpy().astype(np.float32),
+            not_eating_rewards.astype(np.float32),
+            eating_rewards.astype(np.float32)), oracle_rewards, oracle_actions
