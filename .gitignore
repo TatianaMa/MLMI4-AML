@@ -7,3 +7,7 @@ __pycache__
 *.pyc
 models/
 commands.txt
+TF-Sonnet-BayesByBackprop/
+bandits/
+contextual_bandits/
+example_main.py

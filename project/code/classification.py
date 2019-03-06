@@ -10,11 +10,13 @@ from utils import is_valid_file
 
 from baseline import baseline_model_fn
 from bayes_mnist import bayes_mnist_model_fn
+from dropout_mnist import dropout_mnist_model_fn
 
 
 models = {
     "baseline": baseline_model_fn,
     "bayes_mnist": bayes_mnist_model_fn,
+    "dropout_mnist": dropout_mnist_model_fn
 }
 
 def mnist_input_fn(data, labels, num_epochs=10, batch_size=128, shuffle_samples=5000):
@@ -47,10 +49,11 @@ def run(args):
     params={
         "data_format": "channels_last",
         "hidden_units": 400,
+        "dropout": 0.5,
         "num_mc_samples": 1,
         "prior": "mixture",
         "sigma": 0.,
-        "mu":0.,
+        "mu": 0.,
         "mix_prop": 0.25,
         "sigma1": 6.,
         "sigma2": 1.,
