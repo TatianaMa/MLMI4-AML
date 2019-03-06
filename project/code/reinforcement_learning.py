@@ -3,11 +3,16 @@ import tensorflow as tf
 import argparse
 import matplotlib.pyplot as plt
 
-from utils import is_valid_file
+from utils import is_valid_file, load_mushroom_dataset, generate_new_contexts
 
+models = {
+    "baseline": None
+}
 
 def prepare_rl_task():
-    
+    dataset = load_mushroom_dataset()
+
+    generate_new_contexts(dataset)
 
 def run(args):
 
