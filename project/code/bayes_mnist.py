@@ -160,8 +160,6 @@ def bayes_mnist_model_fn(features, labels, mode, params):
         layers = ["variational_dense_1", "variational_dense_2", "variational_dense_out"]
 
         samples = []
-        snrs = [] # Signal to noise ratios
-        # with tf.Session() as sess:
         for layer in layers:
             for w in ["weight_", "bias_"]:
                 var = []
@@ -169,19 +167,10 @@ def bayes_mnist_model_fn(features, labels, mode, params):
                     var.append([v for v in tf.trainable_variables() if v.name == layer + "/" + w + theta + ":0"][0])
 
                 mu = var[0]
-                # print(tf.get_default_session().run(mu))
                 sigma = tf.nn.softplus(var[1])
 
                 sample = tfd.Normal(loc=mu, scale=sigma).sample()
                 samples.append(tf.reshape(sample, [-1]))
-
-                snr = tf.math.scalar_mul(10, tf.math.log(tf.math.divide(tf.math.abs(mu), sigma)))
-                snrs.append(tf.reshape(snr, [-1]))
-                print('len ' + str(len(snrs)))
-
-        # tf.summary.histogram("weight/snr", tf.concat(snrs, axis=0))
-        # snrs = sess.run(snrs)
-        # plt.hist(tf.concat(snrs, axis=0).eval())
 
         eval_hooks = []
         eval_summary_hook = tf.train.SummarySaverHook(
@@ -189,11 +178,6 @@ def bayes_mnist_model_fn(features, labels, mode, params):
             summary_op=tf.summary.histogram("weight/hist", tf.concat(samples, axis=0)),
             output_dir=params["model_dir"])
         eval_hooks.append(eval_summary_hook)
-        eval_summary_hook2 = tf.train.SummarySaverHook(
-            save_steps=1,
-            summary_op=tf.summary.histogram("snr/hist", tf.concat(snrs, axis=0)),
-            output_dir=params["model_dir"])
-        eval_hooks.append(eval_summary_hook2)
 
         eval_metric_ops = {
             "accuracy": tf.metrics.accuracy(labels=labels,
