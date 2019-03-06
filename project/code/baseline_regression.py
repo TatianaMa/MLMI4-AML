@@ -32,20 +32,20 @@ def create_model(features, params):
         activation=tf.nn.relu
     ).apply(input_layer)
 
-    dense1 = Dropout(0.5).apply(dense1)
+    #dense1 = Dropout(0.3).apply(dense1)
 
-    # Dense Layer #2
-    dense2 = Dense(
-        units=params['hidden_units'],
-        activation=tf.nn.relu
-    ).apply(dense1)
+    # # Dense Layer #2
+    # dense2 = Dense(
+    #     units=params['hidden_units'],
+    #     activation=tf.nn.relu
+    # ).apply(dense1)
 
-    dense2 = Dropout(0.3).apply(dense2)
+    # dense2 = Dropout(0.3).apply(dense2)
 
     # Output Layer
     logits = Dense(
         units=1
-    ).apply(dense2)
+    ).apply(dense1)
 
     return logits
 
@@ -55,6 +55,12 @@ def baseline_regression_model_fn(features, labels, mode, params):
     """
     This function will handle the training, evaluation and prediction procedures.
     """
+    optimizers = {
+        "sgd": tf.train.GradientDescentOptimizer(learning_rate=params["learning_rate"]),
+        "momentum": tf.train.MomentumOptimizer(learning_rate=params["learning_rate"], momentum=0.9, use_nesterov=True),
+        "adam": tf.train.AdamOptimizer(learning_rate=params["learning_rate"]),
+        "rmsprop": tf.train.RMSPropOptimizer(learning_rate=params["learning_rate"])
+    }
 
     logits = create_model(features, params)
 
@@ -66,7 +72,7 @@ def baseline_regression_model_fn(features, labels, mode, params):
                                         predictions=logits)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate=LEARNING_RATE)
+        optimizer = tf.train.GradientDescentOptimizer(learning_rate=params["learning_rate"])
         train_op = optimizer.minimize(loss=loss,
                                       global_step=tf.train.get_global_step())
 
