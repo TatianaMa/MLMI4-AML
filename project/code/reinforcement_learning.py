@@ -104,7 +104,7 @@ def run(args):
 
     data, oracle_reward, oracle_actions = generate_new_contexts(
         dataset=dataset,
-        num_contexts=config["training_set_size"]
+        num_contexts=config["max_steps"]
     )
 
     contexts, no_eat_reward, eat_reward = data
@@ -129,7 +129,7 @@ def run(args):
     cumulative_regret = 0
     cum_regrets = []
 
-    num_batches = config["training_set_size"] // config["update_every"]
+    num_batches = config["max_steps"] // config["update_every"]
     batch_size = config["update_every"]
 
     print("Training set size: {}".format(config["training_set_size"]))
@@ -139,78 +139,68 @@ def run(args):
 
     total_batch_index = 0
 
-    while True:
 
-        # Shuffle the training set and iterate through it
-        order = np.arange(config["training_set_size"], dtype=np.int32)
-        np.random.shuffle(order)
-
-
-        for batch_idx in range(num_batches):
-            if steps >= config["max_steps"]: break
-
-            total_batch_index += 1
-
-            context = contexts[batch_idx * batch_size: (batch_idx + 1) * batch_size, :]
-
-            action = get_action(agent, context)
-
-            num_incorrect_actions = np.sum(np.abs(action - oracle_actions[batch_idx * batch_size: (batch_idx + 1) * batch_size]))
-            if num_incorrect_actions == 0:
-                print("Perfect set of actions!")
-            else:
-                print("{} actions selected incorrectly.".format(num_incorrect_actions))
-
-            # Assume we haven't eaten anything, correct where needed
-            reward = no_eat_reward[batch_idx * batch_size: (batch_idx + 1) * batch_size, :]
-            curr_eat_rewards = eat_reward[batch_idx * batch_size: (batch_idx + 1) * batch_size, :]
-            reward[action == 1] = curr_eat_rewards[action == 1]
-
-            cumulative_reward += np.sum(reward)
-            cum_rewards.append(cumulative_reward)
-
-            cumulative_regret += np.sum(oracle_reward[batch_idx * batch_size: (batch_idx + 1) * batch_size] - reward)
-            cum_regrets.append(cumulative_regret)
-
-            action_vec = np.zeros((batch_size, 2))
-            action_vec[action == 0, 0] = 1
-            action_vec[action == 1, 1] = 1
-            feature_vec = np.hstack([context, action_vec])
+    # Shuffle the training set and iterate through it
+    order = np.arange(config["training_set_size"], dtype=np.int32)
+    np.random.shuffle(order)
 
 
-            if replay_buffer is None:
-                replay_buffer = feature_vec
-                rewards = reward
-            else:
-                replay_buffer = np.vstack([replay_buffer, feature_vec])
-                rewards = np.vstack([rewards, reward])
+    for batch_idx in range(num_batches):
 
-            # Prune the replay buffer
-            if replay_buffer.shape[0] > config["replay_buffer_size"]:
-                replay_buffer = replay_buffer[-config["replay_buffer_size"]:, :]
-                rewards = rewards[-config["replay_buffer_size"]:, :]
+        total_batch_index += 1
 
+        context = contexts[batch_idx * batch_size: (batch_idx + 1) * batch_size, :]
 
-            # Update the agent's value function
-            update_agent(agent, replay_buffer, np.array(rewards))
+        action = get_action(agent, context)
 
-
-            if total_batch_index % 5 == 0:
-                print("{}/{} batches done!".format(steps, config["max_steps"]))
-                with open("cum_regrets.txt", "w") as f:
-                    f.write(str(cum_regrets))
-
-            steps += batch_size
-
-        # If we finish iterating through the data, then the else condition will be
-        # activated and we will loop around. If we break out of the for loop, it must
-        # mean therefore that we have reached the max step count, and we should stop
-        # training.
+        num_incorrect_actions = np.sum(np.abs(action - oracle_actions[batch_idx * batch_size: (batch_idx + 1) * batch_size]))
+        if num_incorrect_actions == 0:
+            print("Perfect set of actions!")
         else:
-            continue
-        break
+            print("{} actions selected incorrectly.".format(num_incorrect_actions))
+
+        # Assume we haven't eaten anything, correct where needed
+        reward = no_eat_reward[batch_idx * batch_size: (batch_idx + 1) * batch_size, :]
+        curr_eat_rewards = eat_reward[batch_idx * batch_size: (batch_idx + 1) * batch_size, :]
+        reward[action == 1] = curr_eat_rewards[action == 1]
+
+        cumulative_reward += np.sum(reward)
+        cum_rewards.append(cumulative_reward)
+
+        cumulative_regret += np.sum(oracle_reward[batch_idx * batch_size: (batch_idx + 1) * batch_size] - reward)
+        cum_regrets.append(cumulative_regret)
+
+        action_vec = np.zeros((batch_size, 2))
+        action_vec[action == 0, 0] = 1
+        action_vec[action == 1, 1] = 1
+        feature_vec = np.hstack([context, action_vec])
+
+
+        if replay_buffer is None:
+            replay_buffer = feature_vec
+            rewards = reward
+        else:
+            replay_buffer = np.vstack([replay_buffer, feature_vec])
+            rewards = np.vstack([rewards, reward])
+
+        # Prune the replay buffer
+        if replay_buffer.shape[0] > config["replay_buffer_size"]:
+            replay_buffer = replay_buffer[-config["replay_buffer_size"]:, :]
+            rewards = rewards[-config["replay_buffer_size"]:, :]
+
+
+        # Update the agent's value function
+        update_agent(agent, replay_buffer, np.array(rewards))
+
+
+        if total_batch_index % 5 == 0:
+            print("{}/{} batches done!".format(total_batch_index, num_batches))
+            with open("cum_regrets.txt", "w") as f:
+                f.write(str(cum_regrets))
+
 
     plt.plot(cum_regrets)
+    plt.yscale("log")
     plt.show()
 
 
