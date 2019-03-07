@@ -32,23 +32,32 @@ def get_action(agent, context, epsilon=0):
     :type context: [context_size x 1] numpy array
     """
 
+    num_contexts = context.shape[0]
+
     # Attach one-hot encoding of actions at the end of context vector
-    no_eat_action = np.hstack([context, np.array([1, 0])])
-    eat_action = np.hstack([context, np.array([0, 1])])
+    no_eat_action = np.hstack([context, np.ones((num_contexts, 1)), np.zeros((num_contexts, 1))])
+    eat_action = np.hstack([context, np.zeros((num_contexts, 1)), np.ones((num_contexts, 1))])
+    no_eat_rewards = agent.predict(input_fn=lambda: tf.data.Dataset.from_tensor_slices(no_eat_action))
+    no_eat_rewards = np.array(list(no_eat_rewards))
 
-    actions = np.vstack([no_eat_action, eat_action]).astype(np.float32)
+    eat_rewards = agent.predict(input_fn=lambda: tf.data.Dataset.from_tensor_slices(eat_action))
+    eat_rewards = np.array(list(eat_rewards))
 
-    rewards = agent.predict(input_fn=lambda: tf.data.Dataset.from_tensor_slices(actions))
-    rewards = list(rewards)
+    rewards = np.hstack([no_eat_rewards, eat_rewards])
 
-    # Pick epsilon-greedily
-    if np.random.uniform(low=0., high=1.) < epsilon:
-        pass
+    # Epsilon-greedy policy
+    # Start completely greedy
+    action = np.argmax(rewards, axis=1)
 
-    else:
-        action = np.argmax(rewards)
+    # Select indices to update
+    rand_indices = np.random.uniform(low=0., high=1., size=num_contexts) < epsilon
 
-    return action, rewards[action]
+    # Select random actions
+    rand_actions = np.random.choice([0, 1], size=num_contexts)
+
+    action[rand_indices] = rand_actions[rand_indices]
+
+    return action
 
 
 def update_agent(agent, features, rewards):
@@ -61,7 +70,8 @@ def run(args):
         "training_set_size": 8124,
         "num_epochs": 64,
         "batch_size": 64,
-        "update_every": 4096,
+        "replay_buffer_size": 4096,
+        "update_every": 50,
         "max_steps": 20000,
         "context_size": 112
     }
@@ -110,8 +120,8 @@ def run(args):
 
     steps = 1
 
-    rewards = []
-    features = None
+    rewards = None
+    replay_buffer = None
 
     cumulative_reward = 0
     cum_rewards = []
@@ -119,55 +129,78 @@ def run(args):
     cumulative_regret = 0
     cum_regrets = []
 
+    num_batches = config["training_set_size"] // config["update_every"]
+    batch_size = config["update_every"]
+
+    print("Training set size: {}".format(config["training_set_size"]))
+    print("Update frequency: {}".format(config["update_every"]))
+    print("Batch size: {}".format(batch_size))
+    print("Cumulative oracle reward: {}".format(np.sum(oracle_reward)))
+
+    total_batch_index = 0
+
     while True:
 
         # Shuffle the training set and iterate through it
         order = np.arange(config["training_set_size"], dtype=np.int32)
         np.random.shuffle(order)
 
-        for idx in order:
-            if steps == config["max_steps"]: break
 
-            context = contexts[idx, :]
-            action, _ = get_action(agent, context)
+        for batch_idx in range(num_batches):
+            if steps >= config["max_steps"]: break
 
-            # Assign the reward: 0 - pass, 1 - eat the mushroom
-            if action == 0:
-                reward = no_eat_reward[idx]
+            total_batch_index += 1
+
+            context = contexts[batch_idx * batch_size: (batch_idx + 1) * batch_size, :]
+
+            action = get_action(agent, context)
+
+            num_incorrect_actions = np.sum(np.abs(action - oracle_actions[batch_idx * batch_size: (batch_idx + 1) * batch_size]))
+            if num_incorrect_actions == 0:
+                print("Perfect set of actions!")
             else:
-                reward = eat_reward[idx]
+                print("{} actions selected incorrectly.".format(num_incorrect_actions))
 
-            cumulative_reward += reward[0]
+            # Assume we haven't eaten anything, correct where needed
+            reward = no_eat_reward[batch_idx * batch_size: (batch_idx + 1) * batch_size, :]
+            curr_eat_rewards = eat_reward[batch_idx * batch_size: (batch_idx + 1) * batch_size, :]
+            reward[action == 1] = curr_eat_rewards[action == 1]
+
+            cumulative_reward += np.sum(reward)
             cum_rewards.append(cumulative_reward)
 
-            cumulative_regret += oracle_reward[idx] - reward[0]
+            cumulative_regret += np.sum(oracle_reward[batch_idx * batch_size: (batch_idx + 1) * batch_size] - reward)
             cum_regrets.append(cumulative_regret)
 
-            action_vec = np.zeros((1, 2))
-            action_vec[0][action] = 1
-            feature_vec = np.hstack([context.reshape((1,) + context.shape), action_vec])
+            action_vec = np.zeros((batch_size, 2))
+            action_vec[action == 0, 0] = 1
+            action_vec[action == 1, 1] = 1
+            feature_vec = np.hstack([context, action_vec])
 
-            if features is None:
-                features = feature_vec
+
+            if replay_buffer is None:
+                replay_buffer = feature_vec
+                rewards = reward
             else:
-                features = np.vstack([features, feature_vec])
+                replay_buffer = np.vstack([replay_buffer, feature_vec])
+                rewards = np.vstack([rewards, reward])
 
-            rewards.append(reward)
+            # Prune the replay buffer
+            if replay_buffer.shape[0] > config["replay_buffer_size"]:
+                replay_buffer = replay_buffer[-config["replay_buffer_size"]:, :]
+                rewards = rewards[-config["replay_buffer_size"]:, :]
+
 
             # Update the agent's value function
-            if steps % config["update_every"] == 0:
-                update_agent(agent, features, np.array(rewards))
+            update_agent(agent, replay_buffer, np.array(rewards))
 
-                # After the update finishes, reset memory
-                features = None
-                rewards =  []
 
-            if steps % 500 == 0:
-                print("{}/{} steps done!".format(steps, config["max_steps"]))
+            if total_batch_index % 5 == 0:
+                print("{}/{} batches done!".format(steps, config["max_steps"]))
                 with open("cum_regrets.txt", "w") as f:
                     f.write(str(cum_regrets))
 
-            steps += 1
+            steps += batch_size
 
         # If we finish iterating through the data, then the else condition will be
         # activated and we will loop around. If we break out of the for loop, it must
