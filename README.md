@@ -94,17 +94,16 @@ Weights from the specified directory are pruned using the given percentile. The 
 
 ## Poster stuff
 RESULTS: 
-1)Reproducing the MNIST Table
+1. Reproducing the MNIST Table
 
-a) use the same number of data -------> 50000 samples training set, 10000 samples validation set, 10000 samples test set. 
-b) select the best performing model instead of the last one.
-c) Plot: accuracy vs epochs for SFC, Dropout, Bayes
-d) Plot: Compare weight distributions associated with the three models
-e) Weight Pruning -------> plot and table
-
+*a) use the same number of data -------> 50000 samples training set, 10000 samples validation set, 10000 samples test set. 
+*b) Plot: accuracy vs epochs for SFC, Dropout, Bayes
+*c) Plot: Compare weight distributions associated with the three models
+*d) Weight Pruning -------> plot and table
 
 
-2)Regression
-a) Plot: SFC vs BBB -----> highligh the uncertainty outside the data region
-b) Heteroskedastic thing
-c) GP vs BBB
+
+2.Regression
+*a) Plot: SFC vs BBB -----> highligh the uncertainty outside the data region
+*b) Heteroskedastic thing
+*c) GP vs BBB
