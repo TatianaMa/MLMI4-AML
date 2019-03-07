@@ -48,17 +48,17 @@ def create_model(features, labels, params):
             params=params
         )
 
-        # dense2, kld2 = vl.variational_dense(
-        #     inputs=dense1,
-        #     name="variational_dense_2",
-        #     units=params["hidden_units"],
-        #     prior_fn=prior_fn,
-        #     params=params
-        # )
+        dense2, kld2 = vl.variational_dense(
+            inputs=dense1,
+            name="variational_dense_2",
+            units=params["hidden_units"],
+            prior_fn=prior_fn,
+            params=params
+        )
 
 
         # Output Layer
-        logits, kld3 = vl.variational_dense(inputs=dense1,
+        logits, kld3 = vl.variational_dense(inputs=dense2,
                                             units=1,
                                             activation=None,
                                             name="variational_dense_out",
@@ -67,7 +67,7 @@ def create_model(features, labels, params):
         )
 
         logits_list.append(logits)
-        klds_list.append(sum([kld1, kld3]))
+        klds_list.append(sum([kld1, kld2, kld3]))
 
     kld = sum(klds_list) #/ float(params["num_mc_samples"])
 

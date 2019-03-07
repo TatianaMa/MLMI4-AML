@@ -43,7 +43,7 @@ def regression_input_fn(training_xs,
 def run(args):
 
     config = {
-        "training_set_size": 300,
+        "training_set_size": 200,
         "num_epochs": 2000,
         "batch_size": 1,
     }
@@ -60,7 +60,7 @@ def run(args):
                                             "data_format": "channels_last",
                                             "input_dims": [1],
                                             "output_dims": 1,
-                                            "hidden_units": 400,
+                                            "hidden_units": 200,
                                             "num_mc_samples": 3,
                                             "prior": "gaussian",
                                             "sigma": 2.,
@@ -90,7 +90,7 @@ def run(args):
                                                             batch_size=config["batch_size"]))
         print("Training finished!")
 
-    xs = np.linspace(start=-1, stop=15, num=100)
+    xs = np.linspace(start=-10, stop=15, num=100)
 
     results_overall = []
 
