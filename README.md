@@ -89,3 +89,22 @@ Prune weights for MNIST classification by adding the flag --prune_weights. Speci
 ```
 
 Weights from the specified directory are pruned using the given percentile. The pruned weights are stored in a directory with the same name and a suffix pruned_98 and passed to evaluation. Add the flag --no_training if you wish to prune an already trained model.
+
+
+
+## Poster stuff
+RESULTS: 
+1)Reproducing the MNIST Table
+
+a) use the same number of data -------> 50000 samples training set, 10000 samples validation set, 10000 samples test set. 
+b) select the best performing model instead of the last one.
+c) Plot: accuracy vs epochs for SFC, Dropout, Bayes
+d) Plot: Compare weight distributions associated with the three models
+e) Weight Pruning -------> plot and table
+
+
+
+2)Regression
+a) Plot: SFC vs BBB -----> highligh the uncertainty outside the data region
+b) Heteroskedastic thing
+c) GP vs BBB
