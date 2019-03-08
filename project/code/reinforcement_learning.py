@@ -75,7 +75,8 @@ def run(args):
         "replay_buffer_size": 4096,
         "update_every": 50,
         "max_steps": 20000,
-        "context_size": 112
+        "context_size": 112,
+        "num_warmup_batches": 10
     }
 
     model_fn = models[args.model]
@@ -156,7 +157,11 @@ def run(args):
 
         context = contexts[batch_idx * batch_size: (batch_idx + 1) * batch_size, :]
 
-        action = get_action(agent, context, epsilon=0.05)
+        # For the first few batches, just sample them randomly
+        if total_batch_index <= config["num_warmup_batches"]:
+            action = np.random.choice([0, 1], batch_size)
+        else:
+            action = get_action(agent, context, epsilon=0.0)
 
         num_incorrect_actions = np.sum(np.abs(action - oracle_actions[batch_idx * batch_size: (batch_idx + 1) * batch_size]))
         if num_incorrect_actions == 0:
