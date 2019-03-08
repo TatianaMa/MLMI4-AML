@@ -59,7 +59,7 @@ def create_model(features, labels, params):
 
         # Output Layer
         logits, kld3 = vl.variational_dense(inputs=dense2,
-                                            units=1,
+                                            units=2,
                                             activation=None,
                                             name="variational_dense_out",
                                             prior_fn=prior_fn,
@@ -111,11 +111,10 @@ def bayes_regression_model_fn(features, labels, mode, params):
 
         raise KeyError("kl_coeff must be one of {}".format(kl_coeffs.keys()))
 
-    loss, kl, loglik = vl.ELBO_with_MSE(predictions_list=pred_list,
-                                        kl_divergences=[kld],
-                                        kl_coeff=kl_coeff,
-                                        labels=tf.reshape(labels, [-1, 1]))
-
+    loss, kl, loglik = vl.ELBO_with_Gaussian_prior(predictions_list=pred_list,
+                                                   kl_divergences=[kld],
+                                                   kl_coeff=kl_coeff,
+                                                   labels=tf.reshape(labels, [-1, 1]))
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         try:

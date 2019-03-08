@@ -34,18 +34,18 @@ def create_model(features, params):
 
     #dense1 = Dropout(0.3).apply(dense1)
 
-    # # Dense Layer #2
-    # dense2 = Dense(
-    #     units=params['hidden_units'],
-    #     activation=tf.nn.relu
-    # ).apply(dense1)
+    # Dense Layer #2
+    dense2 = Dense(
+        units=params['hidden_units'],
+        activation=tf.nn.relu
+    ).apply(dense1)
 
-    # dense2 = Dropout(0.3).apply(dense2)
+    #dense2 = Dropout(0.3).apply(dense2)
 
     # Output Layer
     logits = Dense(
-        units=1
-    ).apply(dense1)
+        units=2
+    ).apply(dense2)
 
     return logits
 
@@ -68,8 +68,15 @@ def baseline_regression_model_fn(features, labels, mode, params):
     if mode == tf.estimator.ModeKeys.PREDICT:
         return tf.estimator.EstimatorSpec(mode=mode, predictions=logits)
 
-    loss = tf.losses.mean_squared_error(labels=tf.reshape(labels, [-1, 1]),
-                                        predictions=logits)
+    logits = tf.reshape(logits, [-1, 2])
+
+    mus = logits[:, 0]
+    sigmas = tf.nn.softplus(logits[:, 1])
+
+    # (proportional) Log probability of diagonal Gaussian
+    neg_log_prob = tf.log(sigmas) + tf.square(mus - tf.reshape(labels, [-1])) / tf.square(sigmas)
+
+    loss = tf.reduce_sum(neg_log_prob)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         optimizer = tf.train.GradientDescentOptimizer(learning_rate=params["learning_rate"])

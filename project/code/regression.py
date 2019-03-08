@@ -43,7 +43,7 @@ def regression_input_fn(training_xs,
 def run(args):
 
     config = {
-        "training_set_size": 200,
+        "training_set_size": 300,
         "num_epochs": 2000,
         "batch_size": 1,
     }
@@ -73,7 +73,7 @@ def run(args):
                                             "kl_coeff": "uniform",
                                             "num_batches": num_batches,
                                             "optimizer": "sgd",
-                                            "learning_rate": 1e-5
+                                            "learning_rate": 1e-4
                                         })
 
 
@@ -92,21 +92,28 @@ def run(args):
 
     xs = np.linspace(start=-10, stop=15, num=100)
 
-    results_overall = []
+    mus_overall = []
+    sigmas_overall = []
 
     for i in range(10):
         results = regressor.predict(
             input_fn=lambda: tf.data.Dataset.from_tensor_slices(xs.astype(np.float32)).batch(1))
 
-        results_overall.append([r[0] for r in results])
+        mus, sigmas = zip(*list(results))
+        mus_overall.append(mus)
+        sigmas_overall.append(sigmas)
 
-    results_overall = np.array(results_overall)
+    mus_overall = np.array(mus_overall)
+    sigmas_overall = np.array(sigmas_overall)
 
-    means = np.median(results_overall, axis=0)
-    bottom_25 = np.percentile(results_overall, 25, axis=0)
-    top_25 = np.percentile(results_overall, 75, axis=0)
+    means = np.median(mus_overall, axis=0)
+    sigmas = np.median(sigmas_overall, axis=0)
+    bottom_25 = np.percentile(mus_overall, 25, axis=0)
+    top_25 = np.percentile(mus_overall, 75, axis=0)
 
     plt.plot(xs, means)
+    plt.plot(xs, means + sigmas)
+    plt.plot(xs, means - sigmas)
     plt.plot(xs, bottom_25, color='r')
     plt.plot(xs, top_25, color='r')
     plt.scatter(training_xs, training_ys, marker='x', color='k')
