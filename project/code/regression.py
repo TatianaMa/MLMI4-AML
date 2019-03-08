@@ -15,10 +15,13 @@ models = {
 
 
 def create_sine_training_data(num_examples=500):
-    xs = np.random.uniform(low=0., high=0.6, size=num_examples)
+    xs = np.random.uniform(low=0., high=0.5, size=num_examples)
     eps = np.random.normal(loc=0., scale=0.02, size=[num_examples])
 
     ys = xs + 0.3 * np.sin(2*np.pi * (xs + eps)) + 0.3 * np.sin(4*np.pi * (xs + eps)) + eps
+
+    xs = 10 * xs
+    ys = 10 * ys
 
     return xs, ys
 
@@ -40,12 +43,12 @@ def regression_input_fn(training_xs,
 def run(args):
 
     config = {
-        "training_set_size": 500,
-        "num_epochs": 1000,
+        "training_set_size": 300,
+        "num_epochs": 2000,
         "batch_size": 1,
     }
 
-    num_batches = config["training_set_size"] * config["num_epochs"] / config["batch_size"]
+    num_batches = config["training_set_size"] / config["batch_size"]
 
     print("Number of batches: {}".format(num_batches))
 
@@ -57,10 +60,10 @@ def run(args):
                                             "data_format": "channels_last",
                                             "input_dims": [1],
                                             "output_dims": 1,
-                                            "hidden_units": 100,
+                                            "hidden_units": 200,
                                             "num_mc_samples": 3,
-                                            "prior": "mixture",
-                                            "sigma": 0.,
+                                            "prior": "gaussian",
+                                            "sigma": 2.,
                                             "mu":0.,
                                             "mix_prop": 0.25,
                                             "sigma1": 6.,
@@ -69,7 +72,7 @@ def run(args):
                                             "kl_coeff_decay_rate": 1000,
                                             "kl_coeff": "uniform",
                                             "num_batches": num_batches,
-                                            "optimizer": "adam",
+                                            "optimizer": "sgd",
                                             "learning_rate": 1e-4
                                         })
 
@@ -87,23 +90,30 @@ def run(args):
                                                             batch_size=config["batch_size"]))
         print("Training finished!")
 
-    xs = np.linspace(start=-1, stop=2, num=100)
+    xs = np.linspace(start=-10, stop=15, num=100)
 
-    results_overall = []
+    mus_overall = []
+    sigmas_overall = []
 
     for i in range(10):
         results = regressor.predict(
             input_fn=lambda: tf.data.Dataset.from_tensor_slices(xs.astype(np.float32)).batch(1))
 
-        results_overall.append([r[0] for r in results])
+        mus, sigmas = zip(*list(results))
+        mus_overall.append(mus)
+        sigmas_overall.append(sigmas)
 
-    results_overall = np.array(results_overall)
+    mus_overall = np.array(mus_overall)
+    sigmas_overall = np.array(sigmas_overall)
 
-    means = np.median(results_overall, axis=0)
-    bottom_25 = np.percentile(results_overall, 25, axis=0)
-    top_25 = np.percentile(results_overall, 75, axis=0)
+    means = np.median(mus_overall, axis=0)
+    sigmas = np.median(sigmas_overall, axis=0)
+    bottom_25 = np.percentile(mus_overall, 25, axis=0)
+    top_25 = np.percentile(mus_overall, 75, axis=0)
 
     plt.plot(xs, means)
+    plt.plot(xs, means + sigmas)
+    plt.plot(xs, means - sigmas)
     plt.plot(xs, bottom_25, color='r')
     plt.plot(xs, top_25, color='r')
     plt.scatter(training_xs, training_ys, marker='x', color='k')

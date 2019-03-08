@@ -80,3 +80,30 @@ source venv/bin/activate
 (venv)> tensorboard --logdir /tmp/mnist_baseline_model/
 ```
 Access TensorBoard on the generated URL.
+
+## Pruning Weights
+Prune weights for MNIST classification by adding the flag --prune_weights. Specify the pruning_percentile in the config dictionary (classification.py).
+
+```
+(venv)> python code/classification.py --model=bayes_mnist --model_dir=models/bayes_mnist_400 --prune_weights
+```
+
+Weights from the specified directory are pruned using the given percentile. The pruned weights are stored in a directory with the same name and a suffix pruned_98 and passed to evaluation. Add the flag --no_training if you wish to prune an already trained model.
+
+
+
+## Poster stuff
+RESULTS: 
+1. Reproducing the MNIST Table
+
+* a) use the same number of data -------> 50000 samples training set, 10000 samples validation set, 10000 samples test set. 
+* b) Plot: accuracy vs epochs for SFC, Dropout, Bayes
+* c) Plot: Compare weight distributions associated with the three models
+* d) Weight Pruning -------> plot and table
+
+
+
+2.Regression
+* a) Plot: SFC vs BBB -----> highligh the uncertainty outside the data region
+* b) Heteroskedastic thing
+* c) GP vs BBB 

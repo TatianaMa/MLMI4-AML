@@ -104,19 +104,23 @@ def ELBO_with_logits(logits, kl_divergences, kl_coeff, labels):
 
     return elbo, kl_divergence, negative_log_likelihood
 
-def ELBO_with_MSE(predictions_list, kl_divergences, kl_coeff, labels):
-    negative_log_likelihood = sum([tf.losses.mean_squared_error(predictions=tf.reshape(predictions, [-1, 1]), labels=labels) for predictions in predictions_list])
+def ELBO_with_Gaussian_prior(predictions_list, kl_divergences, kl_coeff, labels):
+    mus = [tf.reshape(predictions, [-1, 2])[:, 0] for predictions in predictions_list]
+    sigmas = [tf.nn.softplus(tf.reshape(predictions, [-1, 2])[:, 1]) for predictions in predictions_list]
 
-    # negative_log_likelihood = 0
-
-    # for predictions in predictions_list:
-    #     predictions = tf.reshape(predictions, [-1])
-    #     labels = tf.reshape(labels, [-1])
-
-    #     negative_log_likelihood = negative_log_likelihood + tf.reduce_sum(tf.square(predictions - labels))
+    neg_log_prob = sum([tf.log(sigma) + tf.square(mu - tf.reshape(labels, [-1])) / tf.square(sigma) for mu, sigma in zip(mus, sigmas)])
 
     kl_divergence = kl_coeff * sum(kl_divergences)
 
-    elbo = kl_divergence + negative_log_likelihood
+    elbo = kl_divergence + neg_log_prob
+
+    return elbo, kl_divergence, neg_log_prob
+
+def ELBO_with_MSE(predictions_list, kl_divergences, kl_coeff, labels):
+    negative_log_likelihood = sum([tf.losses.mean_squared_error(predictions=tf.reshape(predictions, [-1, 1]), labels=labels) for predictions in predictions_list])
+
+    kl_divergence = kl_coeff * sum(kl_divergences)
+
+    elbo = kl_coeff * kl_divergence + negative_log_likelihood
 
     return elbo, kl_divergence, negative_log_likelihood
