@@ -6,9 +6,11 @@ import matplotlib.pyplot as plt
 from utils import is_valid_file, load_mushroom_dataset, generate_new_contexts
 
 from baseline_rl_agent import baseline_rl_agent_model_fn
+from bayes_rl_agent import bayes_rl_agent_model_fn
 
 models = {
     "baseline": baseline_rl_agent_model_fn,
+    "bayes": bayes_rl_agent_model_fn,
 }
 
 def rl_input_fn(contexts, rewards, num_epochs=1, batch_size=64, shuffle_size=1000):
@@ -78,6 +80,8 @@ def run(args):
 
     model_fn = models[args.model]
 
+    num_batches = config["max_steps"] // config["update_every"]
+
     # Create agent
     agent = tf.estimator.Estimator(model_fn=model_fn,
                                    model_dir=args.model_dir,
@@ -85,7 +89,7 @@ def run(args):
                                        "context_size": config["context_size"],
                                        "hidden_units": 100,
                                        "dropout": 0.5,
-                                       "num_mc_samples": 1,
+                                       "num_mc_samples": 2,
                                        "prior": "mixture",
                                        "sigma": 0.,
                                        "mu":0.,
@@ -95,8 +99,10 @@ def run(args):
                                        #"kl_coeff": "geometric",
                                        "kl_coeff_decay_rate": 1000,
                                        "kl_coeff": "uniform",
+                                       "num_batches": num_batches,
                                        "optimizer": "sgd",
-                                       "learning_rate": 1e-3
+                                       "learning_rate": 1e-3,
+                                       "verbose": False
                                    })
 
     # Load the UCI mushroom dataset
@@ -129,12 +135,11 @@ def run(args):
     cumulative_regret = 0
     cum_regrets = []
 
-    num_batches = config["max_steps"] // config["update_every"]
     batch_size = config["update_every"]
 
     print("Training set size: {}".format(config["training_set_size"]))
     print("Update frequency: {}".format(config["update_every"]))
-    print("Batch size: {}".format(batch_size))
+    print("Number of batches: {}".format(num_batches))
     print("Cumulative oracle reward: {}".format(np.sum(oracle_reward)))
 
     total_batch_index = 0
@@ -151,7 +156,7 @@ def run(args):
 
         context = contexts[batch_idx * batch_size: (batch_idx + 1) * batch_size, :]
 
-        action = get_action(agent, context)
+        action = get_action(agent, context, epsilon=0.05)
 
         num_incorrect_actions = np.sum(np.abs(action - oracle_actions[batch_idx * batch_size: (batch_idx + 1) * batch_size]))
         if num_incorrect_actions == 0:
