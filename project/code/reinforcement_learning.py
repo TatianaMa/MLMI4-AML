@@ -73,7 +73,7 @@ def run(args):
         "num_epochs": 64,
         "batch_size": 64,
         "replay_buffer_size": 4096,
-        "update_every": 50,
+        "update_every": 25,
         "max_steps": 20000,
         "context_size": 112,
         "num_warmup_batches": 10

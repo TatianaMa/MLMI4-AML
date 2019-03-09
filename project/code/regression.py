@@ -20,8 +20,8 @@ def create_sine_training_data(num_examples=500):
 
     ys = xs + 0.3 * np.sin(2*np.pi * (xs + eps)) + 0.3 * np.sin(4*np.pi * (xs + eps)) + eps
 
-    xs = 10 * xs
-    ys = 10 * ys
+    xs = xs
+    ys = ys
 
     return xs, ys
 
@@ -44,7 +44,7 @@ def run(args):
 
     config = {
         "training_set_size": 300,
-        "num_epochs": 2000,
+        "num_epochs": 150,
         "batch_size": 1,
     }
 
@@ -60,9 +60,9 @@ def run(args):
                                             "data_format": "channels_last",
                                             "input_dims": [1],
                                             "output_dims": 1,
-                                            "hidden_units": 200,
-                                            "num_mc_samples": 3,
-                                            "prior": "gaussian",
+                                            "hidden_units": 400,
+                                            "num_mc_samples": 1,
+                                            "prior": "mixture",
                                             "sigma": 2.,
                                             "mu":0.,
                                             "mix_prop": 0.25,
@@ -72,8 +72,8 @@ def run(args):
                                             "kl_coeff_decay_rate": 1000,
                                             "kl_coeff": "uniform",
                                             "num_batches": num_batches,
-                                            "optimizer": "sgd",
-                                            "learning_rate": 1e-4
+                                            "optimizer": "adam",
+                                            "learning_rate": 1e-3
                                         })
 
 
@@ -90,30 +90,35 @@ def run(args):
                                                             batch_size=config["batch_size"]))
         print("Training finished!")
 
-    xs = np.linspace(start=-10, stop=15, num=100)
+    xs = np.linspace(start=-0.2, stop=1.2, num=100)
 
     mus_overall = []
     sigmas_overall = []
+    results_overall = []
 
     for i in range(10):
         results = regressor.predict(
             input_fn=lambda: tf.data.Dataset.from_tensor_slices(xs.astype(np.float32)).batch(1))
 
-        mus, sigmas = zip(*list(results))
-        mus_overall.append(mus)
-        sigmas_overall.append(sigmas)
+        # mus, sigmas = zip(*list(results))
+        # mus_overall.append(mus)
+        # sigmas_overall.append(sigmas)
+        results_overall.append([r[0] for r in results])
 
-    mus_overall = np.array(mus_overall)
-    sigmas_overall = np.array(sigmas_overall)
+    results_overall = np.array(results_overall)
+    print(results_overall.shape)
+    # mus_overall = np.array(mus_overall)
+    # sigmas_overall = np.array(sigmas_overall)
 
-    means = np.median(mus_overall, axis=0)
-    sigmas = np.median(sigmas_overall, axis=0)
-    bottom_25 = np.percentile(mus_overall, 25, axis=0)
-    top_25 = np.percentile(mus_overall, 75, axis=0)
+    # mus = np.median(mus_overall, axis=0)
+    # sigmas = np.median(sigmas_overall, axis=0)
+    results = np.median(results_overall, axis=0)
+    bottom_25 = np.percentile(results_overall, 25, axis=0)
+    top_25 = np.percentile(results_overall, 75, axis=0)
 
-    plt.plot(xs, means)
-    plt.plot(xs, means + sigmas)
-    plt.plot(xs, means - sigmas)
+    plt.plot(xs, results)
+    # plt.plot(xs, means + sigmas)
+    # plt.plot(xs, means - sigmas)
     plt.plot(xs, bottom_25, color='r')
     plt.plot(xs, top_25, color='r')
     plt.scatter(training_xs, training_ys, marker='x', color='k')
