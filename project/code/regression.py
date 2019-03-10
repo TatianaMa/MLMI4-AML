@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 import argparse
 import matplotlib.pyplot as plt
+import json
 
 from utils import is_valid_file
 

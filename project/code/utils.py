@@ -125,7 +125,7 @@ def generate_new_contexts(dataset,
     poisonous_indicator = contexts.iloc[:, 1]
 
     # R = e * r_e + p * r, r ~ Cat([r_e, r_p], 0.5)
-    eating_rewards = edible_indicator * edible_reward + poisonous_indicator * np.random.choice([edible_reward, poisonous_reward], 1, p=[1 - prob_poison, prob_poison])
+    eating_rewards = edible_indicator * edible_reward + poisonous_indicator * np.random.choice([edible_reward, poisonous_reward], num_contexts, p=[1 - prob_poison, prob_poison])
     eating_rewards = eating_rewards.to_numpy().reshape((num_contexts, 1))
 
     possible_rewards = np.concatenate([not_eating_rewards, eating_rewards], axis=1)
@@ -140,6 +140,19 @@ def generate_new_contexts(dataset,
     total_oracle_reward = np.sum(oracle_rewards)
     # print(total_oracle_reward)
 
+    is_edible = contexts.iloc[:, 0] == 1
+
     return (contexts.iloc[:, 2:].to_numpy().astype(np.float32),
             not_eating_rewards.astype(np.float32),
-            eating_rewards.astype(np.float32)), oracle_rewards, oracle_actions
+            eating_rewards.astype(np.float32)), oracle_rewards, oracle_actions, is_edible.to_numpy()
+
+if __name__ == "__main__":
+    ds = load_mushroom_dataset()
+    stuff = generate_new_contexts(ds, 10)
+    (ctx, ner, er), ore, ora = stuff
+
+    print(ctx)
+
+    print(er)
+    print(ore)
+    print(ora)

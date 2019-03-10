@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 import argparse
 import matplotlib.pyplot as plt
+import json
 
 from utils import is_valid_file, load_mushroom_dataset, generate_new_contexts
 
@@ -68,15 +69,19 @@ def update_agent(agent, features, rewards):
 
 def run(args):
 
+    if args.eps < 0 or args.eps > 1:
+        raise Exception("Epsilon has to be between 0 and 1!")
+
     config = {
         "training_set_size": 8124,
         "num_epochs": 64,
         "batch_size": 64,
         "replay_buffer_size": 4096,
-        "update_every": 25,
-        "max_steps": 20000,
+        "update_every": 20,
+        "max_steps": 50000,
         "context_size": 112,
-        "num_warmup_batches": 10
+        "num_warmup_batches": 00,
+        "log_every": 10
     }
 
     model_fn = models[args.model]
@@ -109,7 +114,7 @@ def run(args):
     # Load the UCI mushroom dataset
     dataset = load_mushroom_dataset()
 
-    data, oracle_reward, oracle_actions = generate_new_contexts(
+    data, oracle_reward, oracle_actions, is_edible = generate_new_contexts(
         dataset=dataset,
         num_contexts=config["max_steps"]
     )
@@ -136,6 +141,35 @@ def run(args):
     cumulative_regret = 0
     cum_regrets = []
 
+    oracle_relative_action_taken = {
+        "tp": [],
+        "fp": [],
+        "fn": [],
+        "tn": []
+    }
+
+    edibility_relative_action_taken = {
+        "tp": [],
+        "fp": [],
+        "fn": [],
+        "tn": []
+    }
+
+    oracle_stats = {
+        "tp": 0,
+        "fp": 0,
+        "tn": 0,
+        "fn": 0
+    }
+
+    is_edible_stats = {
+        "tp": 0,
+        "fp": 0,
+        "tn": 0,
+        "fn": 0
+    }
+
+
     batch_size = config["update_every"]
 
     print("Training set size: {}".format(config["training_set_size"]))
@@ -145,39 +179,33 @@ def run(args):
 
     total_batch_index = 0
 
-
-    # Shuffle the training set and iterate through it
-    order = np.arange(config["training_set_size"], dtype=np.int32)
-    np.random.shuffle(order)
-
-
     for batch_idx in range(num_batches):
+
+        start_idx = batch_idx * batch_size
+        end_idx = (batch_idx + 1) * batch_size
 
         total_batch_index += 1
 
-        context = contexts[batch_idx * batch_size: (batch_idx + 1) * batch_size, :]
+        context = contexts[ start_idx:end_idx , :]
 
         # For the first few batches, just sample them randomly
         if total_batch_index <= config["num_warmup_batches"]:
             action = np.random.choice([0, 1], batch_size)
         else:
-            action = get_action(agent, context, epsilon=0.0)
-
-        num_incorrect_actions = np.sum(np.abs(action - oracle_actions[batch_idx * batch_size: (batch_idx + 1) * batch_size]))
-        if num_incorrect_actions == 0:
-            print("Perfect set of actions!")
-        else:
-            print("{} actions selected incorrectly.".format(num_incorrect_actions))
+            action = get_action(agent, context, epsilon=args.eps)
 
         # Assume we haven't eaten anything, correct where needed
-        reward = no_eat_reward[batch_idx * batch_size: (batch_idx + 1) * batch_size, :]
-        curr_eat_rewards = eat_reward[batch_idx * batch_size: (batch_idx + 1) * batch_size, :]
+        reward = no_eat_reward[ start_idx: end_idx, :]
+        curr_eat_rewards = eat_reward[ start_idx:end_idx, :]
         reward[action == 1] = curr_eat_rewards[action == 1]
+
+        ore = oracle_reward[start_idx:end_idx].reshape((-1, 1))
 
         cumulative_reward += np.sum(reward)
         cum_rewards.append(cumulative_reward)
 
-        cumulative_regret += np.sum(oracle_reward[batch_idx * batch_size: (batch_idx + 1) * batch_size] - reward)
+        regret = np.sum(ore - reward)
+        cumulative_regret += regret
         cum_regrets.append(cumulative_regret)
 
         action_vec = np.zeros((batch_size, 2))
@@ -202,11 +230,63 @@ def run(args):
         # Update the agent's value function
         update_agent(agent, replay_buffer, np.array(rewards))
 
+        oracle_stats["tp"] += sum((action == 1) & (oracle_actions[start_idx:end_idx] == 1))
+        oracle_stats["fp"] += sum((action == 1) & (oracle_actions[start_idx:end_idx] == 0))
+        oracle_stats["tn"] += sum((action == 0) & (oracle_actions[start_idx:end_idx] == 0))
+        oracle_stats["fn"] += sum((action == 0) & (oracle_actions[start_idx:end_idx] == 1))
 
-        if total_batch_index % 5 == 0:
+        is_edible_stats["tp"] += sum((action == 1) & (is_edible[start_idx:end_idx] == 1))
+        is_edible_stats["fp"] += sum((action == 1) & (is_edible[start_idx:end_idx] == 0))
+        is_edible_stats["tn"] += sum((action == 0) & (is_edible[start_idx:end_idx] == 0))
+        is_edible_stats["fn"] += sum((action == 0) & (is_edible[start_idx:end_idx] == 1))
+
+
+        # ======================================================================
+        # Log things
+        # ======================================================================
+        if total_batch_index % config["log_every"] == 0:
             print("{}/{} batches done!".format(total_batch_index, num_batches))
-            with open("cum_regrets.txt", "w") as f:
+            with open("cum_regrets_{}_eps_{:.2f}.txt".format(args.model, args.eps), "w") as f:
                 f.write(str(cum_regrets))
+
+            oracle_relative_action_taken["tp"].append(int(oracle_stats["tp"]))
+            oracle_relative_action_taken["fp"].append(int(oracle_stats["fp"]))
+            oracle_relative_action_taken["tn"].append(int(oracle_stats["tn"]))
+            oracle_relative_action_taken["fn"].append(int(oracle_stats["fn"]))
+
+            edibility_relative_action_taken["tp"].append(int(is_edible_stats["tp"]))
+            edibility_relative_action_taken["fp"].append(int(is_edible_stats["fp"]))
+            edibility_relative_action_taken["tn"].append(int(is_edible_stats["tn"]))
+            edibility_relative_action_taken["fn"].append(int(is_edible_stats["fn"]))
+
+
+            oracle_stats = {
+                "tp": 0,
+                "fp": 0,
+                "tn": 0,
+                "fn": 0
+            }
+
+            is_edible_stats = {
+                "tp": 0,
+                "fp": 0,
+                "tn": 0,
+                "fn": 0
+            }
+
+
+            with open("cum_regrets_{}_eps_{:.2f}_orat.txt".format(args.model, args.eps), "w") as f:
+                json.dump(oracle_relative_action_taken, f)
+
+            with open("cum_regrets_{}_eps_{:.2f}_erat.txt".format(args.model, args.eps), "w") as f:
+                json.dump(edibility_relative_action_taken, f)
+
+        num_incorrect_actions = np.sum(np.abs(action - oracle_actions[ start_idx: end_idx]))
+        if num_incorrect_actions == 0:
+            print("Perfect set of actions!")
+        else:
+            print("{}/{} actions selected incorrectly. Regret:{}".format(num_incorrect_actions, batch_size, regret))
+
 
 
     plt.plot(cum_regrets)
@@ -217,6 +297,8 @@ def run(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Bayes By Backprop models')
 
+    parser.add_argument('--eps', type=float, default=0.0,
+                        help='Epsilon for the Eps-Greedy policy')
     parser.add_argument('--model', choices=list(models.keys()), default='baseline',
                     help='The model to train.')
     parser.add_argument('--no_training', action="store_false", dest="is_training", default=True,
