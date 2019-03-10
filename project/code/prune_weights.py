@@ -4,7 +4,13 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import numpy as np
 
-def prune_weights(model_dir, pruning_percentile, plot_hist=False):
+def prune_weights(model, model_dir, pruning_percentile, plot_hist=False):
+    if model == "bayes_mnist":
+        return prune_weights_bayes(model_dir, pruning_percentile, plot_hist)
+    else:
+        return prune_weights_other(model_dir, pruning_percentile, plot_hist)
+
+def prune_weights_bayes(model_dir, pruning_percentile, plot_hist):
     tf.reset_default_graph()
     checkpoint = tf.train.get_checkpoint_state(model_dir)
 
@@ -35,8 +41,9 @@ def prune_weights(model_dir, pruning_percentile, plot_hist=False):
             plt.axvline(x=pruning_threshold, color='tab:red')
             plt.xlabel('Signal-To-Noise Ratio (dB)')
             plt.ylabel('Density')
-            plt.title('Histogram of the Signal-To-Noise ratio over all weights in the network')
-            plt.show()
+            # plt.title('Histogram of the signal-to-noise ratio over all weights')
+            plt.savefig("prune_weights.png")
+            # plt.show()
 
         # Prune weights using the obtained threshold
         for layer in layers:
@@ -54,6 +61,41 @@ def prune_weights(model_dir, pruning_percentile, plot_hist=False):
                 rho_updated = tf.contrib.distributions.softplus_inverse(tf.math.multiply(sigma, mask))
                 var_updated = var[1].assign(rho_updated)
                 sess.run(var_updated)
+
+        # Save pruned model in a new directory
+        new_dir = model_dir + '_pruned_' + str(pruning_percentile)
+        if not os.path.exists(new_dir):
+            os.makedirs(new_dir)
+        saver.save(sess, new_dir + '/model.ckpt')
+        return new_dir
+
+def prune_weights_other(model_dir, pruning_percentile, plot_hist):
+    tf.reset_default_graph()
+    checkpoint = tf.train.get_checkpoint_state(model_dir)
+
+    with tf.Session() as sess:
+        saver = tf.train.import_meta_graph(checkpoint.model_checkpoint_path + '.meta')
+        saver.restore(sess, checkpoint.model_checkpoint_path)
+
+        layers = ["dense", "dense_1", "dense_2"]
+        weights = []
+        for layer in layers:
+            for w in ["kernel:0", "bias:0"]:
+                name = layer + "/" + w
+                var = tf.math.abs([v for v in tf.trainable_variables() if v.name == name][0])
+                weights.append(tf.math.abs(tf.reshape(var, [-1])))
+        weights = tf.concat(weights, axis=0)
+        pruning_threshold = sess.run(tf.contrib.distributions.percentile(weights, q=pruning_percentile, interpolation='lower'))
+
+        for layer in layers:
+            for w in ["kernel:0", "bias:0"]:
+                name = layer + "/" + w
+                var = [v for v in tf.trainable_variables() if v.name == name][0]
+                var_abs = tf.math.abs(var)
+                mask = tf.dtypes.cast(tf.math.greater(var_abs, pruning_threshold), dtype=tf.float32)
+                var_new = tf.math.multiply(var, mask)
+                var_update = var.assign(var_new)
+                sess.run(var_update)
 
         # Save pruned model in a new directory
         new_dir = model_dir + '_pruned_' + str(pruning_percentile)

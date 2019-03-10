@@ -3,6 +3,7 @@ import tensorflow as tf
 import argparse
 import os, tempfile
 import matplotlib.pyplot as plt
+import logging
 
 from prune_weights import prune_weights
 
@@ -34,12 +35,13 @@ def mnist_parse_fn(data, labels):
 
 
 def run(args):
+    logging.getLogger().setLevel(logging.INFO)
 
     config = {
         "training_set_size": 60000,
-        "num_epochs": 600,
+        "num_epochs": 100,
         "batch_size": 128,
-        "pruning_percentile": 98
+        "pruning_percentile": 99
     }
 
     num_batches = config["training_set_size"] * config["num_epochs"] / config["batch_size"]
@@ -48,7 +50,7 @@ def run(args):
 
     params={
         "data_format": "channels_last",
-        "hidden_units": 400,
+        "hidden_units": 800,
         "dropout": 0.5,
         "num_mc_samples": 1,
         "prior": "mixture",
@@ -82,7 +84,7 @@ def run(args):
 
     if args.prune_weights:
         print("Pruning weights with {} percentile.".format(config["pruning_percentile"]))
-        pruned_model_dir = prune_weights(args.model_dir, config["pruning_percentile"], plot_hist=False)
+        pruned_model_dir = prune_weights(args.model, args.model_dir, config["pruning_percentile"], plot_hist=True)
         classifier = tf.estimator.Estimator(model_fn=model_fn,
                                             model_dir=pruned_model_dir,
                                             params=params)
