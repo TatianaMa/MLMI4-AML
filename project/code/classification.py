@@ -40,7 +40,7 @@ def run(args):
 
     config = {
         "training_set_size": 60000,
-        "num_epochs": 200,
+        "num_epochs": 600,
         "batch_size": 128,
         "pruning_percentile": 99
     }
@@ -65,7 +65,7 @@ def run(args):
         "kl_coeff_decay_rate": 1,
         "kl_coeff": "uniform",
         "num_batches": num_batches,
-        "optimizer": "sgd",
+        "optimizer": "adam",
         "learning_rate": 1e-3,
         "model_dir": args.model_dir,
     }
