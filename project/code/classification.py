@@ -4,6 +4,7 @@ import argparse
 import os, tempfile
 import matplotlib.pyplot as plt
 import logging
+from sklearn.model_selection import train_test_split
 
 from prune_weights import prune_weights
 
@@ -20,9 +21,9 @@ models = {
     "dropout_mnist": dropout_mnist_model_fn
 }
 
-def mnist_input_fn(data, labels, num_epochs=10, batch_size=128, shuffle_samples=5000):
+def mnist_input_fn(data, labels, num_epochs=200, batch_size=128): #shuffle_samples=5000):
     dataset = tf.data.Dataset.from_tensor_slices((data, labels))
-    dataset = dataset.shuffle(shuffle_samples)
+    #dataset = dataset.shuffle(shuffle_samples)
     dataset = dataset.repeat(num_epochs)
     dataset = dataset.map(mnist_parse_fn)
     dataset = dataset.batch(batch_size)
@@ -30,7 +31,7 @@ def mnist_input_fn(data, labels, num_epochs=10, batch_size=128, shuffle_samples=
     return dataset
 
 
-def mnist_parse_fn(data, labels):
+def mnist_parse_fn(data, labels):#shuffle_samples=5000
     return (tf.cast(data, tf.float32)/126., tf.cast(labels, tf.int32))
 
 
@@ -39,12 +40,13 @@ def run(args):
 
     config = {
         "training_set_size": 60000,
-        "num_epochs": 100,
+        "num_epochs": 200,
         "batch_size": 128,
         "pruning_percentile": 99
     }
 
-    num_batches = config["training_set_size"] * config["num_epochs"] / config["batch_size"]
+    #num_batches = config["training_set_size"] * config["num_epochs"] / config["batch_size"]
+    num_batches = config["training_set_size"] / config["batch_size"]
 
     model_fn = models[args.model]
 
@@ -57,13 +59,13 @@ def run(args):
         "sigma": 0.,
         "mu": 0.,
         "mix_prop": 0.25,
-        "sigma1": 6.,
+        "sigma1": 7.,
         "sigma2": 1.,
         #"kl_coeff": "geometric",
-        "kl_coeff_decay_rate": 100,
+        "kl_coeff_decay_rate": 1,
         "kl_coeff": "uniform",
         "num_batches": num_batches,
-        "optimizer": "adam",
+        "optimizer": "sgd",
         "learning_rate": 1e-3,
         "model_dir": args.model_dir,
     }
@@ -75,6 +77,9 @@ def run(args):
 
     ((train_data, train_labels),
      (eval_data, eval_labels)) = tf.keras.datasets.mnist.load_data()
+
+
+    #train_data, eval_data, train_labels, eval_labels = train_test_split(train_data, train_labels, test_size=0.1666666, stratify = train_labels)
 
 
     if args.is_training:

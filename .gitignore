@@ -11,5 +11,6 @@ TF-Sonnet-BayesByBackprop/
 bandits/
 contextual_bandits/
 example_main.py
+cum_*
 figs/
 *.gz
