@@ -4,7 +4,7 @@ import tensorflow_probability as tfp
 tfd = tfp.distributions
 import variational as vl
 
-LEARNING_RATE = 1e-5
+#LEARNING_RATE = 1e-5
 def create_model(features, labels, params):
     """
     Builds the computation graph for the baseline model.
@@ -115,7 +115,7 @@ def bayes_regression_model_fn(features, labels, mode, params):
                                         kl_divergences=[kld],
                                         kl_coeff=kl_coeff,
                                         labels=tf.reshape(labels, [-1, 1]),
-                                        sigma=2.)
+                                        sigma=1.)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         try:

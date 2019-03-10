@@ -80,14 +80,15 @@ def bayes_mnist_model_fn(features, labels, mode, params):
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
     # the global step is the batch number
-    batch_number = tf.train.get_global_step() // params["kl_coeff_decay_rate"]
-
+    #batch_number = tf.train.get_global_step() // params["kl_coeff_decay_rate"]
+    batch_number = 469.
     kl_coeffs = {
         # if batch_number > 30, we just set the coefficient to 0, otherwise to (1/2)^batch_number
         "geometric": tf.pow(0.5, tf.cast(batch_number + 1, tf.float32)) * tf.cast(tf.less(batch_number, 30), tf.float32),
 
         # Since we rely on the user passing the number of batches as a param, we need to check
-        "uniform": 1./float(params["num_batches"]) if "kl_coeff" in params and "num_batches" in params else 1.
+        #"uniform": 1./float(params["num_batches"]) if "kl_coeff" in params and "num_batches" in params else 1.
+        "uniform": 1./float(batch_number) 
     }
 
     try:
@@ -103,13 +104,11 @@ def bayes_mnist_model_fn(features, labels, mode, params):
                                labels=labels)
 
 
-
     if mode == tf.estimator.ModeKeys.TRAIN:
         try:
             optimizer = optimizers[params["optimizer"]]
         except KeyError as e:
             raise KeyError("No optimizer specified! Possibilities: {}".format(optimizers.keys()))
-
         logging.getLogger().setLevel(logging.INFO)
         train_op = optimizer.minimize(loss=loss,
                                       global_step=tf.train.get_global_step())

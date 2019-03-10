@@ -14,8 +14,9 @@ def create_weights_and_biases(units_prev, units_next):
     # rho_init = tf.initializers.random_normal(mean=-3., stddev=.1)
     rho_init = tf.initializers.constant(-3)
 
-    weight_mu = tf.get_variable(name="weight_mu", shape=[units_prev, units_next], initializer=mu_init)
-    weight_rho = tf.get_variable(name="weight_rho", shape=[units_prev, units_next], initializer=rho_init)
+    #with tf.variable_scope("create_weights_and_biases", reuse=tf.AUTO_REUSE):
+    weight_mu = tf.get_variable(name="weight_mu", shape=[units_prev, units_next], initializer=mu_init,trainable=True)
+    weight_rho = tf.get_variable(name="weight_rho", shape=[units_prev, units_next], initializer=rho_init,trainable=True)
 
     # sigma = log(1 + exp(rho))
     weight_sigma = tf.nn.softplus(weight_rho)
@@ -26,9 +27,9 @@ def create_weights_and_biases(units_prev, units_next):
     # ========================
     # Biases
     # ========================
-
-    bias_mu = tf.get_variable(name="bias_mu", shape=[units_next], initializer=mu_init)
-    bias_rho = tf.get_variable(name="bias_rho", shape=[units_next], initializer=rho_init)
+    #with tf.variable_scope("create_weights_and_biases", reuse=tf.AUTO_REUSE):
+    bias_mu = tf.get_variable(name="bias_mu", shape=[units_next], initializer=mu_init,trainable=True)
+    bias_rho = tf.get_variable(name="bias_rho", shape=[units_next], initializer=rho_init,trainable=True)
 
     # sigma = log(1 + exp(rho))
     bias_sigma = tf.nn.softplus(bias_rho)
@@ -50,7 +51,7 @@ def variational_dense(inputs,
 
     # Reuse the variables in this scope, this is crucial for
     # being able to sample multiple times for the same input
-    with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
+    with tf.variable_scope(name):#, reuse=tf.AUTO_REUSE):
         weight_dist, bias_dist = create_weights_and_biases(
             units_prev=inputs.shape[1],
             units_next=units
@@ -76,8 +77,9 @@ def variational_dense(inputs,
         bias_var_post_lp = bias_dist.log_prob(biases)
 
         kl_divergence = tf.reduce_sum(weight_var_post_lp - weight_prior_lp)
+        #kl_divergence2 = tf.reduce_sum(weight_prior_lp + bias_prior_lp)
         kl_divergence += tf.reduce_sum(bias_var_post_lp - bias_prior_lp)
-
+        #kl_divergence = kl_divergence1 - kl_divergence2
     return dense, kl_divergence
 
 def create_gaussian_prior(params):
