@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 tfd = tfp.distributions
@@ -118,8 +119,8 @@ def ELBO_with_Gaussian_prior(predictions_list, kl_divergences, kl_coeff, labels)
 
     return elbo, kl_divergence, neg_log_prob
 
-def ELBO_with_MSE(predictions_list, kl_divergences, kl_coeff, labels):
-    negative_log_likelihood = sum([tf.losses.mean_squared_error(predictions=tf.reshape(predictions, [-1, 1]), labels=labels) for predictions in predictions_list])
+def ELBO_with_MSE(predictions_list, kl_divergences, kl_coeff, labels, sigma=1.):
+    negative_log_likelihood = sum([tf.losses.mean_squared_error(predictions=tf.reshape(predictions, [-1, 1]), labels=labels) for predictions in predictions_list]) / (2 * sigma**2) + np.log(sigma)
 
     kl_divergence = kl_coeff * sum(kl_divergences)
 

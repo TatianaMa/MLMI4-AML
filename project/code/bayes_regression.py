@@ -111,6 +111,7 @@ def bayes_regression_model_fn(features, labels, mode, params):
 
         raise KeyError("kl_coeff must be one of {}".format(kl_coeffs.keys()))
 
+<<<<<<< HEAD
     
     
     loss, kl, loglik = vl.ELBO_with_MSE(predictions_list=pred_list,
@@ -125,6 +126,13 @@ def bayes_regression_model_fn(features, labels, mode, params):
     #                                               kl_divergences=[kld],
     #                                               kl_coeff=kl_coeff,
     #                                               labels=tf.reshape(labels, [-1, 1]))
+=======
+    loss, kl, loglik = vl.ELBO_with_MSE(predictions_list=pred_list,
+                                        kl_divergences=[kld],
+                                        kl_coeff=kl_coeff,
+                                        labels=tf.reshape(labels, [-1, 1]),
+                                        sigma=2.)
+>>>>>>> 5ea20dc8a593374eb6078c0903ce4084c28267fc
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         try:
