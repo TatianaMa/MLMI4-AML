@@ -12,3 +12,4 @@ bandits/
 contextual_bandits/
 example_main.py
 figs/
+*.gz
