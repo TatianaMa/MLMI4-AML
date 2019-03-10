@@ -20,7 +20,7 @@ models = {
     "dropout_mnist": dropout_mnist_model_fn
 }
 
-def mnist_input_fn(data, labels, num_epochs=200, batch_size=128): #shuffle_samples=5000):
+def mnist_input_fn(data, labels, num_epochs=600, batch_size=128): #shuffle_samples=5000):
     dataset = tf.data.Dataset.from_tensor_slices((data, labels))
     #dataset = dataset.shuffle(shuffle_samples)
     dataset = dataset.repeat(num_epochs)
@@ -38,7 +38,7 @@ def run(args):
 
     config = {
         "training_set_size": 60000,
-        "num_epochs": 200,
+        "num_epochs": 600,
         "batch_size": 128,
         "pruning_percentile": 98
     }
@@ -50,7 +50,7 @@ def run(args):
 
     params={
         "data_format": "channels_last",
-        "hidden_units": 400,
+        "hidden_units": 800,
         "dropout": 0.5,
         "num_mc_samples": 1,
         "prior": "mixture",
@@ -63,7 +63,7 @@ def run(args):
         "kl_coeff_decay_rate": 1,
         "kl_coeff": "uniform",
         "num_batches": num_batches,
-        "optimizer": "sgd",
+        "optimizer": "adam",
         "learning_rate": 1e-3,
         "model_dir": args.model_dir,
     }

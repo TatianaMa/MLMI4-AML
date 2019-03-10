@@ -14,17 +14,12 @@ models = {
 
 
 def create_sine_training_data(num_examples=200):
+    np.random.seed(1)
     xs = np.random.uniform(low=-0.05, high=0.6, size=num_examples)
     eps = np.random.normal(loc=0., scale=0.02, size=[num_examples])
 
     ys = xs + 0.3 * np.sin(2*np.pi * (xs + eps)) + 0.3 * np.sin(4*np.pi * (xs + eps)) + eps
 
-<<<<<<< HEAD
-=======
-    xs = xs
-    ys = ys
-
->>>>>>> 5ea20dc8a593374eb6078c0903ce4084c28267fc
     return xs, ys
 
 
@@ -45,13 +40,8 @@ def regression_input_fn(training_xs,
 def run(args):
 
     config = {
-<<<<<<< HEAD
         "training_set_size": 200,
-        "num_epochs": 400,
-=======
-        "training_set_size": 300,
-        "num_epochs": 150,
->>>>>>> 5ea20dc8a593374eb6078c0903ce4084c28267fc
+        "num_epochs": 600,
         "batch_size": 1,
     }
 
@@ -67,14 +57,9 @@ def run(args):
                                             "data_format": "channels_last",
                                             "input_dims": [1],
                                             "output_dims": 1,
-<<<<<<< HEAD
                                             "hidden_units": 100,
                                             "num_mc_samples": 1,
                                             #"prior": "gaussian",
-=======
-                                            "hidden_units": 400,
-                                            "num_mc_samples": 1,
->>>>>>> 5ea20dc8a593374eb6078c0903ce4084c28267fc
                                             "prior": "mixture",
                                             "sigma": 2.,
                                             "mu":0.,
@@ -103,25 +88,16 @@ def run(args):
                                                             batch_size=config["batch_size"]))
         print("Training finished!")
 
-<<<<<<< HEAD
-    xs = np.linspace(start=-2., stop=2., num=400)
-
-    results_overall = []
-    #mus_overall = []
-    #sigmas_overall = []
-=======
-    xs = np.linspace(start=-0.2, stop=1.2, num=100)
+    xs = np.linspace(start=-2., stop=2, num=400)
 
     mus_overall = []
     sigmas_overall = []
     results_overall = []
->>>>>>> 5ea20dc8a593374eb6078c0903ce4084c28267fc
 
     for i in range(100):
         results = regressor.predict(
             input_fn=lambda: tf.data.Dataset.from_tensor_slices(xs.astype(np.float32)).batch(1))
 
-<<<<<<< HEAD
         results_overall.append([r[0] for r in results])
         #mus, sigmas = zip(*list(results))
         #mus_overall.append(mus)
@@ -141,37 +117,17 @@ def run(args):
     #sigmas = np.median(sigmas_overall, axis=0)
     #bottom_25 = np.percentile(mus_overall, 25, axis=0)
     #top_25 = np.percentile(mus_overall, 75, axis=0)
-
+    fig = plt.gcf()
+    fig.set_size_inches(5,3.5)
     plt.plot(xs, means)
     #plt.plot(xs, means + sigmas)
     #plt.plot(xs, means - sigmas)
-=======
-        # mus, sigmas = zip(*list(results))
-        # mus_overall.append(mus)
-        # sigmas_overall.append(sigmas)
-        results_overall.append([r[0] for r in results])
-
-    results_overall = np.array(results_overall)
-    print(results_overall.shape)
-    # mus_overall = np.array(mus_overall)
-    # sigmas_overall = np.array(sigmas_overall)
-
-    # mus = np.median(mus_overall, axis=0)
-    # sigmas = np.median(sigmas_overall, axis=0)
-    results = np.median(results_overall, axis=0)
-    bottom_25 = np.percentile(results_overall, 25, axis=0)
-    top_25 = np.percentile(results_overall, 75, axis=0)
-
-    plt.plot(xs, results)
-    # plt.plot(xs, means + sigmas)
-    # plt.plot(xs, means - sigmas)
->>>>>>> 5ea20dc8a593374eb6078c0903ce4084c28267fc
     plt.plot(xs, bottom_25, color='r')
     plt.plot(xs, top_25, color='r')
     plt.plot(xs, bottom_25_2, color='g')
     plt.plot(xs, top_25_2, color='g')
     plt.scatter(training_xs, training_ys, marker='x', color='k')
-    plt.ylim([-1.5,1.9])
+    plt.ylim([-1.5,1.5])
     plt.xlim([-0.6,1.4])
     plt.show()
 
