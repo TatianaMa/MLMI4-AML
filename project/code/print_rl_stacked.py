@@ -13,17 +13,18 @@ def main(args):
     colours = sns.color_palette("RdBu", 4)
     colours = [colours[i] for i in [0, 1, 3, 2]]
 
-    labels = ["True Positives", "False Positives", "True Negatives", "False Negatives"]
-    xs = range(1, len(res["tp"]) * args.steps + 1, args.steps)
+    #labels = ["True Positives", "False Positives", "True Negatives", "False Negatives"]
+    labels = ["Agent eats edible mushroom", "Agent eats poisonous mushroom", "Agent passes on poisonous mushroom", "Agent passes on edible mushroom"]
+    xs = range(1, len(res["tp"][:50]) * args.steps + 1, args.steps)
 
-    ys = [res[k] for k in ["tp", "fp", "tn", "fn"]]
+    ys = [np.array(res[k][:50]) / float(args.steps) * 100. for k in ["tp", "fp", "tn", "fn"]]
 
     plt.stackplot(xs, ys, labels=labels, colors=colours)
     plt.legend(loc='lower right', frameon=True, framealpha=0.3)
-    plt.xlim([1, len(xs) * args.steps])
-    plt.ylim([0, 500])
+    plt.xlim([1, (len(xs) - 1) * args.steps])
+    plt.ylim([0, 100])
     plt.xlabel("Step")
-    plt.ylabel("Outcome")
+    plt.ylabel("Outcome (%)")
     fig = plt.gcf()
     fig.set_size_inches(6,4.5)
     plt.show()
