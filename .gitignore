@@ -1,5 +1,5 @@
 .DS_Store
-venv/
+venv*
 test.py
 __pycache__
 .ipynb*
