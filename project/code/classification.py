@@ -4,7 +4,7 @@ import argparse
 import os, tempfile
 import matplotlib.pyplot as plt
 import logging
-from sklearn.model_selection import train_test_split
+# from sklearn.model_selection import train_test_split
 
 from prune_weights import prune_weights
 
@@ -42,7 +42,7 @@ def run(args):
         "training_set_size": 60000,
         "num_epochs": 600,
         "batch_size": 128,
-        "pruning_percentile": 99
+        "pruning_percentile": 90
     }
 
     #num_batches = config["training_set_size"] * config["num_epochs"] / config["batch_size"]
@@ -89,7 +89,7 @@ def run(args):
 
     if args.prune_weights:
         print("Pruning weights with {} percentile.".format(config["pruning_percentile"]))
-        pruned_model_dir = prune_weights(args.model, args.model_dir, config["pruning_percentile"], plot_hist=True)
+        pruned_model_dir = prune_weights(args.model, args.model_dir, config["pruning_percentile"], plot_hist=False)
         classifier = tf.estimator.Estimator(model_fn=model_fn,
                                             model_dir=pruned_model_dir,
                                             params=params)

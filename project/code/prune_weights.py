@@ -3,6 +3,7 @@ import os
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 
 def prune_weights(model, model_dir, pruning_percentile, plot_hist=False):
     if model == "bayes_mnist":
@@ -33,17 +34,22 @@ def prune_weights_bayes(model_dir, pruning_percentile, plot_hist):
                 snrs.append(tf.reshape(snr, [-1]))
         snrs = tf.concat(snrs, axis=0)
         pruning_threshold = sess.run(tf.contrib.distributions.percentile(snrs, q=pruning_percentile, interpolation='lower'))
+        print("PRUNINNG THRESHOLD")
+        print(pruning_threshold)
 
         if plot_hist:
             binwidth = 1
             snrs_val = sess.run(snrs)
-            plt.hist(snrs_val, bins=np.arange(min(snrs_val), max(snrs_val) + binwidth, binwidth))
+            # plt.hist(snrs_val, bins=np.arange(min(snrs_val), max(snrs_val) + binwidth, binwidth))
+            sns.distplot(snrs_val, hist=False, color=sns.cubehelix_palette(8, start=.5, rot=-.75)[7])
             plt.axvline(x=pruning_threshold, color='tab:red')
             plt.xlabel('Signal-To-Noise Ratio (dB)')
             plt.ylabel('Density')
             # plt.title('Histogram of the signal-to-noise ratio over all weights')
-            plt.savefig("prune_weights.png")
-            # plt.show()
+            fig = plt.gcf()
+            # fig.set_size_inches(50,35)
+            # plt.savefig("prune_weights.eps")
+            plt.show()
 
         # Prune weights using the obtained threshold
         for layer in layers:
@@ -54,7 +60,7 @@ def prune_weights_bayes(model_dir, pruning_percentile, plot_hist):
                 mu = var[0]
                 sigma = tf.nn.softplus(var[1])
                 snr = tf.math.scalar_mul(10., tf.math.log(tf.math.divide(tf.math.abs(mu), sigma)))
-                mask = tf.dtypes.cast(tf.math.greater(snr, pruning_threshold), dtype=tf.float32)
+                mask = tf.dtypes.cast(tf.math.less(snr, pruning_threshold), dtype=tf.float32)
                 mu_updated = tf.math.multiply(mu, mask)
                 var_updated = var[0].assign(mu_updated)
                 sess.run(var_updated)
@@ -67,6 +73,7 @@ def prune_weights_bayes(model_dir, pruning_percentile, plot_hist):
         if not os.path.exists(new_dir):
             os.makedirs(new_dir)
         saver.save(sess, new_dir + '/model.ckpt')
+        print("FINISHED PRUNING")
         return new_dir
 
 def prune_weights_other(model_dir, pruning_percentile, plot_hist):

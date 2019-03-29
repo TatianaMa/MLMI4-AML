@@ -6,34 +6,41 @@ import numpy as np
 import seaborn as sns
 
 def plot_weights():
+    threshold=-2.867364
     binwidth = 0.1
 
     # colors = sns.color_palette("Blues")
     colors = sns.cubehelix_palette(8, start=.5, rot=-.75)
 
     snrs = get_snrs("models/bayes_mnist_800_100")
-    sns.distplot(snrs, hist = False, label="100", color=colors[7])
+    sns.distplot(snrs, hist = False, label="100", color=colors[2])
 
     snrs = get_snrs("models/bayes_mnist_800_200")
-    sns.distplot(snrs, hist = False, label="200", color=colors[6])
+    sns.distplot(snrs, hist = False, label="200", color=colors[3])
 
     snrs = get_snrs("models/bayes_mnist_800_300")
-    sns.distplot(snrs, hist = False, label="300", color=colors[5])
+    sns.distplot(snrs, hist = False, label="300", color=colors[4])
 
     snrs = get_snrs("models/bayes_mnist_800_400")
-    sns.distplot(snrs, hist = False, label="400", color=colors[4])
+    sns.distplot(snrs, hist = False, label="400", color=colors[5])
 
     snrs = get_snrs("models/bayes_mnist_800_500")
-    sns.distplot(snrs, hist = False, label="500", color=colors[3])
+    sns.distplot(snrs, hist = False, label="500", color=colors[6])
 
     snrs = get_snrs("models/bayes_mnist_800_600")
-    sns.distplot(snrs, hist = False, label="600", color=colors[2])
+    sns.distplot(snrs, hist = False, label="600", color=colors[7])
+
+    plt.axvline(x=threshold, color='tab:red')
 
     # fig = dist_plot.get_figure()
     plt.xlabel('Signal-To-Noise Ratio (dB)')
     plt.ylabel('Density')
     plt.legend(title = '# Epochs')
-    plt.savefig("distplot.png")
+    # plt.savefig("distplot.png")
+    fig = plt.gcf()
+    fig.set_size_inches(5, 3.5)
+    plt.savefig("weights.eps")
+    # plt.show()
 
     # plt.title('Histogram of the signal-to-noise ratio over all weights')
     # plt.savefig("prune_weights.png")

@@ -88,7 +88,7 @@ def bayes_mnist_model_fn(features, labels, mode, params):
 
         # Since we rely on the user passing the number of batches as a param, we need to check
         #"uniform": 1./float(params["num_batches"]) if "kl_coeff" in params and "num_batches" in params else 1.
-        "uniform": 1./float(batch_number) 
+        "uniform": 1./float(batch_number)
     }
 
     try:
@@ -178,9 +178,13 @@ def bayes_mnist_model_fn(features, labels, mode, params):
             output_dir=params["model_dir"])
         eval_hooks.append(eval_summary_hook)
 
+        # mean, variance = tf.nn.moments(predictions, 1)
+
         eval_metric_ops = {
             "accuracy": tf.metrics.accuracy(labels=labels,
                                             predictions=predictions)
+            # "mean": mean,
+            # "variance": variance
         }
 
         return tf.estimator.EstimatorSpec(mode=mode,
