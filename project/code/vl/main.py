@@ -7,6 +7,7 @@ tfs = tf.contrib.summary
 tfs_logger = tfs.record_summaries_every_n_global_steps
 
 import argparse
+import os
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
@@ -30,7 +31,7 @@ def mnist_input_fn(data, labels, batch_size=128, shuffle_samples=5000):
 
 
 def mnist_parse_fn(data, labels):#shuffle_samples=5000
-    return (tf.cast(tf.reshape(data, [-1]), tf.float32)/126., tf.cast(labels, tf.int32))
+    return (tf.cast(tf.reshape(data, [-1]), tf.float32)/126., tf.cast(labels, tf.int64))
 
 
 def run(args):
@@ -44,32 +45,79 @@ def run(args):
         "batch_size": 128,
         "pruning_percentile": 98,
         "learning_rate": 1e-3,
-        "log_freq": 100
+        "log_freq": 100,
+        "checkpoint_postfix": "_ckpt",
+        "validation_set_percentage": 0.1
     }
 
     #num_batches = config["training_set_size"] * config["num_epochs"] / config["batch_size"]
-    num_batches = config["training_set_size"] / config["batch_size"]
+    num_batches = int((1 - config["validation_set_percentage"]) * config["training_set_size"]) / config["batch_size"]
 
     # ==========================================================================
     # Loading in the dataset
     # ==========================================================================
     ((train_data, train_labels),
-    (eval_data, eval_labels)) = tf.keras.datasets.mnist.load_data()
+    (test_data, test_labels)) = tf.keras.datasets.mnist.load_data()
 
-    dataset = mnist_input_fn(train_data,
-                             train_labels,
-                             batch_size=config["batch_size"])
+    train_data, val_data, train_labels, val_labels = train_test_split(train_data,
+                                                                      train_labels,
+                                                                      test_size=config["validation_set_percentage"],
+                                                                      shuffle=True,
+                                                                      stratify=train_labels)
+
+
+    train_dataset = mnist_input_fn(train_data,
+                                   train_labels,
+                                   batch_size=config["batch_size"])
+
+    val_dataset = mnist_input_fn(val_data,
+                                 val_labels,
+                                 batch_size=len(val_data))
+
 
     # ==========================================================================
     # Define the model
     # ==========================================================================
 
-    global_step = tf.train.get_or_create_global_step()
-
     model = VarMNIST(units=400,
                      prior=tfp.distributions.Normal(loc=0., scale=0.3))
+    model(tf.zeros((1, 28, 28)))
 
     optimizer = tf.train.RMSPropOptimizer(learning_rate=config["learning_rate"])
+
+    # ==========================================================================
+    # Define Checkpoints
+    # ==========================================================================
+
+    global_step = tf.train.get_or_create_global_step()
+
+    ckpt_prefix = os.path.join(args.model_dir, "checkpoints", config["checkpoint_postfix"])
+
+    checkpoint = tf.train.Checkpoint(**{v.name: v for v in model.get_all_variables()})
+
+    latest_checkpoint_path = tf.train.latest_checkpoint(os.path.join(args.model_dir, "checkpoints"))
+
+    if latest_checkpoint_path is None:
+        print("No checkpoint found!")
+    else:
+        print("Checkpoint found at {}, restoring...".format(latest_checkpoint_path))
+        checkpoint.restore(latest_checkpoint_path).assert_consumed()
+        print("Model restored!")
+
+    # ==========================================================================
+    # Define Tensorboard Summary writer
+    # ==========================================================================
+
+    logdir = os.path.join(args.model_dir, "log")
+    writer = tfs.create_file_writer(logdir)
+    writer.set_as_default()
+
+    train_accuracy = tfe.metrics.Accuracy()
+    val_accuracy = tfe.metrics.Accuracy()
+
+    for validation_data, validation_labels in val_dataset:
+        val_data = validation_data
+        val_labels = validation_labels
 
     # ==========================================================================
     # Train the model
@@ -78,12 +126,12 @@ def run(args):
     for epoch in range(1, config["num_epochs"] + 1):
 
         with tqdm(total=num_batches) as pbar:
-            for features, labels in dataset:
+            for features, labels in train_dataset:
                 # Increment global step
                 global_step.assign_add(1)
 
                 # Record gradients of the forward pass
-                with tf.GradientTape() as tape, tfs_logger(config["log_freq"]):
+                with tf.GradientTape() as tape:
 
                     logits = model(features)
 
@@ -97,16 +145,39 @@ def run(args):
                     # negative ELBO
                     loss = kl_coeff * model.kl_divergence + negative_log_likelihood
 
-                    # Add tensorboard summaries
-                    tfs.scalar("Loss", loss)
-
                 # Backprop
                 grads = tape.gradient(loss, model.get_all_variables())
                 optimizer.apply_gradients(zip(grads, model.get_all_variables()))
 
+                # =================================
+                # Add summaries for tensorboard
+                # =================================
+                with tfs_logger(config["log_freq"]):
+                    tfs.scalar("Loss", loss)
+
+                    predictions = tf.argmax(input=logits,
+                                            axis=1)
+                    train_accuracy(labels=labels,
+                                   predictions=predictions)
+
+                    acc = 100 * train_accuracy.result()
+
                 # Update the progress bar
                 pbar.update(1)
-                pbar.set_description("Epoch {}, ELBO: {:.2f}".format(epoch, loss))
+                pbar.set_description("Epoch {}, Train Accuracy: {:.2f}, ELBO: {:.2f}".format(epoch, acc, loss))
+
+
+        logits = model(val_data)
+        val_predictions = tf.argmax(input=logits,
+                                    axis=1)
+
+        val_accuracy(labels=val_labels,
+                     predictions=val_predictions)
+        acc = 100 * val_accuracy.result()
+
+        print("Validation Accuracy: {:.2f}%".format(acc))
+
+        checkpoint.save(ckpt_prefix)
 
 
 if __name__ == "__main__":
