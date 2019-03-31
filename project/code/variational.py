@@ -17,6 +17,7 @@ class VarEstimator(snt.AbstractModule):
 
         # Private fields
         self._layers = []
+        self.is_training = True
 
         # Public fields
         self.prior = prior
@@ -173,7 +174,8 @@ class VarMNIST(VarEstimator):
     def __init__(self,
                  units,
                  prior,
-                 name="var_mnist"):
+                 name="var_mnist",
+                 **kwargs):
 
         super(VarMNIST, self).__init__(prior=prior,
                                        name=name)
@@ -392,4 +394,3 @@ class VarLinear(snt.AbstractModule):
     def b_sigma(self):
         self._ensure_is_connected()
         return tf.nn.softplus(self._b_rho)
-

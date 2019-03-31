@@ -14,11 +14,13 @@ from sklearn.model_selection import train_test_split
 
 from utils import is_valid_file, setup_eager_checkpoints_and_restore
 from variational import VarMNIST
+from baseline import BaseMNIST
 
 tf.enable_eager_execution()
 
 models = {
-    "baseline": None
+    "baseline": BaseMNIST,
+    "bayes": VarMNIST
 }
 
 def mnist_input_fn(data, labels, batch_size=128, shuffle_samples=5000):
@@ -41,14 +43,15 @@ def run(args):
     # ==========================================================================
     config = {
         "training_set_size": 60000,
-        "num_epochs": 1,
+        "num_epochs": 10,
         "batch_size": 128,
         "pruning_percentile": 80,
         "learning_rate": 1e-3,
         "log_freq": 100,
         "checkpoint_name": "_ckpt",
         "validation_set_percentage": 0.1,
-        "num_units": 400
+        "num_units": 400,
+        "dropout": True
     }
 
     #num_batches = config["training_set_size"] * config["num_epochs"] / config["batch_size"]
@@ -80,8 +83,9 @@ def run(args):
     # Define the model
     # ==========================================================================
 
-    model = VarMNIST(units=config["num_units"],
-                     prior=tfp.distributions.Normal(loc=0., scale=0.3))
+    model = models[args.model](units=config["num_units"],
+                               prior=tfp.distributions.Normal(loc=0., scale=0.3),
+                               dropout=config["dropout"])
 
     # Connect the model computational graph by executing a forward-pass
     model(tf.zeros((1, 28, 28)))
@@ -183,6 +187,7 @@ def run(args):
     # Testing
     # ==========================================================================
 
+    model.is_training = False
     # Silly hack to get the entire training set
     for data, labels in mnist_input_fn(test_data, test_labels, batch_size=len(test_data)):
         test_data = data
@@ -249,4 +254,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     run(args)
-
