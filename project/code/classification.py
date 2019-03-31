@@ -11,9 +11,10 @@ import os
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
+import json
 
 from utils import is_valid_file, setup_eager_checkpoints_and_restore
-from variational import VarMNIST
+from variational import VarMNIST, create_gaussian_prior, create_mixture_prior
 from baseline import BaseMNIST
 
 tf.enable_eager_execution()
@@ -21,6 +22,19 @@ tf.enable_eager_execution()
 models = {
     "baseline": BaseMNIST,
     "bayes": VarMNIST
+}
+
+priors = {
+    "gaussian": create_gaussian_prior,
+    "mixture": create_mixture_prior
+}
+
+optimizers = {
+    "sgd": tf.train.GradientDescentOptimizer,
+    "momentum": lambda lr:
+                    tf.train.MomentumOptimizer(learning_rate=lr, momentum=0.9, use_nesterov=True),
+    "adam": tf.train.AdamOptimizer,
+    "rmsprop": tf.train.RMSPropOptimizer
 }
 
 def mnist_input_fn(data, labels, batch_size=128, shuffle_samples=5000):
@@ -43,19 +57,39 @@ def run(args):
     # ==========================================================================
     config = {
         "training_set_size": 60000,
-        "num_epochs": 10,
+        "num_epochs": 1,
         "batch_size": 128,
         "pruning_percentile": 80,
         "learning_rate": 1e-3,
         "log_freq": 100,
         "checkpoint_name": "_ckpt",
         "validation_set_percentage": 0.1,
-        "num_units": 400,
-        "dropout": True
+        "num_units": 800,
+        "dropout": True,
+        "prior_params": {
+            # Parameters for Gaussian prior
+            "sigma": 0.,
+            "mu": 0.,
+
+            # Parameters for scale mixture prior
+            "mix_prop": 0.25,
+            "sigma1": 7.,
+            "sigma2": 1.,
+        },
+        "prior": "mixture",
+        "optimizer": "adam",
+        "beta": 1.
     }
+
+    if args.config is not None:
+        config = json.load(args.config)
+
+    print(json.dumps(config, indent=4, sort_keys=True))
 
     #num_batches = config["training_set_size"] * config["num_epochs"] / config["batch_size"]
     num_batches = int((1 - config["validation_set_percentage"]) * config["training_set_size"]) / config["batch_size"]
+
+    weight_prior = priors[config["prior"]](config["prior_params"])
 
     # ==========================================================================
     # Loading in the dataset
@@ -84,13 +118,13 @@ def run(args):
     # ==========================================================================
 
     model = models[args.model](units=config["num_units"],
-                               prior=tfp.distributions.Normal(loc=0., scale=0.3),
+                               prior=weight_prior,
                                dropout=config["dropout"])
 
     # Connect the model computational graph by executing a forward-pass
     model(tf.zeros((1, 28, 28)))
 
-    optimizer = tf.train.RMSPropOptimizer(learning_rate=config["learning_rate"])
+    optimizer = optimizers[config["optimizer"]](config["learning_rate"])
 
     # ==========================================================================
     # Define Checkpoints
@@ -139,7 +173,7 @@ def run(args):
 
                         logits = model(features)
 
-                        kl_coeff = 1. / num_batches
+                        kl_coeff = config["beta"] / num_batches
 
                         # negative ELBO
                         loss = kl_coeff * model.kl_divergence + model.negative_log_likelihood(logits, labels)
@@ -249,6 +283,8 @@ if __name__ == "__main__":
                     help='Should we just evaluate?')
     parser.add_argument('--model_dir', type=lambda x: is_valid_file(parser, x), default='/tmp/bayes_by_backprop',
                     help='The model directory.')
+    parser.add_argument('--config', type=open, default=None,
+                    help='Path to the config JSON file.')
     parser.add_argument('--prune_weights', action="store_true", dest="prune_weights", default=False,
                     help='Should we do weight pruning during evaluation.')
     args = parser.parse_args()

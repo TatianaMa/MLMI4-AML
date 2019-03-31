@@ -71,14 +71,7 @@ class VarMushroomRL(VarEstimator):
         self.units = units
 
     def negative_log_likelihood(self, predictions, labels, sigma=1.):
-        negative_log_likelihood = tf.losses.mean_squared_error(
-            predictions=tf.reshape(predictions, [-1, 1]),
-            labels=labels)
-
-        negative_log_likelihood = negative_log_likelihood / (2 * sigma**2) + tf.math.log(sigma)
-
-        return negative_log_likelihood
-
+        return neg_log_prob_with_gaussian(predictions, labels, sigma)
 
     def _build(self, inputs):
 
@@ -127,13 +120,7 @@ class VarRegression(VarEstimator):
         self.units = units
 
     def negative_log_likelihood(self, predictions, labels, sigma=1.):
-        negative_log_likelihood = tf.losses.mean_squared_error(
-            predictions=tf.reshape(predictions, [-1, 1]),
-            labels=labels)
-
-        negative_log_likelihood = negative_log_likelihood / (2 * sigma**2) + tf.math.log(sigma)
-
-        return negative_log_likelihood
+        return neg_log_prob_with_gaussian(predictions, labels, sigma)
 
 
     def _build(self, inputs):
@@ -183,11 +170,7 @@ class VarMNIST(VarEstimator):
         self.units = units
 
     def negative_log_likelihood(self, logits, labels):
-        negative_log_likelihood = tf.nn.sparse_softmax_cross_entropy_with_logits(
-            labels=labels,
-            logits=logits)
-
-        return tf.reduce_sum(negative_log_likelihood)
+        return neg_log_prob_with_categorical(logits, labels)
 
     def _build(self, inputs):
 
@@ -394,3 +377,36 @@ class VarLinear(snt.AbstractModule):
     def b_sigma(self):
         self._ensure_is_connected()
         return tf.nn.softplus(self._b_rho)
+
+# ==============================================================================
+# Auxiliary functions
+# ==============================================================================
+
+def create_gaussian_prior(params):
+    prior = tfp.distributions.Normal(loc=params["mu"], scale=tf.exp(-params["sigma"]))
+    return prior
+
+def create_mixture_prior(params):
+    prior = tfp.distributions.Mixture(
+        cat = tfp.distributions.Categorical(probs=[params["mix_prop"], 1. - params["mix_prop"]]),
+        components=[
+            tfp.distributions.Normal(loc=0., scale=tf.exp(-params["sigma1"])),
+            tfp.distributions.Normal(loc=0., scale=tf.exp(-params["sigma2"])),
+        ])
+    return prior
+
+def neg_log_prob_with_categorical(logits, labels):
+    neg_log_prob = tf.nn.sparse_softmax_cross_entropy_with_logits(
+        labels=labels,
+        logits=logits)
+
+    return tf.reduce_sum(neg_log_prob)
+
+def neg_log_prob_with_gaussian(predictions, labels, sigma=1.):
+    neg_log_prob = tf.losses.mean_squared_error(
+        predictions=tf.reshape(predictions, [-1, 1]),
+        labels=labels)
+
+    neg_log_prob = neg_log_prob / (2 * sigma**2) + tf.math.log(sigma)
+
+    return neg_log_prob
