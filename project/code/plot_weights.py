@@ -36,10 +36,12 @@ def plot_weights():
     plt.xlabel('Signal-To-Noise Ratio (dB)')
     plt.ylabel('Density')
     plt.legend(title = '# Epochs')
+    plt.show()
+
     # plt.savefig("distplot.png")
-    fig = plt.gcf()
-    fig.set_size_inches(5, 3.5)
-    plt.savefig("weights.eps")
+    # fig = plt.gcf()
+    # fig.set_size_inches(5, 3.5)
+    # plt.savefig("weights.eps")
     # plt.show()
 
     # plt.title('Histogram of the signal-to-noise ratio over all weights')
@@ -65,10 +67,15 @@ def get_snrs(model_dir):
                     var.append([v for v in tf.trainable_variables() if v.name == layer + "/" + w + theta + ":0"][0])
                 mu = var[0]
                 sigma = tf.nn.softplus(var[1])
-                snr = tf.math.scalar_mul(10., tf.math.log(tf.math.divide(tf.math.abs(mu), sigma)))
+                snr = tf.math.scalar_mul(10., log10(tf.math.divide(tf.math.abs(mu), sigma)))
                 snrs.append(tf.reshape(snr, [-1]))
         snrs = tf.concat(snrs, axis=0)
         snrs_val = sess.run(snrs)
         return snrs_val
+
+def log10(x):
+  numerator = tf.math.log(x)
+  denominator = tf.math.log(tf.constant(10, dtype=numerator.dtype))
+  return tf.math.divide(numerator, denominator)
 
 plot_weights()

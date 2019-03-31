@@ -14,7 +14,6 @@ def plot_dists(bayes, baseline, dropout):
     # Bayes
     tf.reset_default_graph()
     checkpoint = tf.train.get_checkpoint_state(bayes)
-    print(checkpoint.model_checkpoint_path)
 
     with tf.Session() as sess:
         saver = tf.train.import_meta_graph(checkpoint.model_checkpoint_path + '.meta')
@@ -23,6 +22,7 @@ def plot_dists(bayes, baseline, dropout):
         layers = ["variational_dense_1", "variational_dense_2", "variational_dense_out"]
 
         samples = []
+        mus = []
         for layer in layers:
             for w in ["weight_", "bias_"]:
                 var = []
@@ -34,14 +34,17 @@ def plot_dists(bayes, baseline, dropout):
 
                 sample = tfd.Normal(loc=mu, scale=sigma).sample()
                 samples.append(tf.reshape(sample, [-1]))
+
+                mus.append(tf.reshape(mu, [-1]))
         samples_val = sess.run(tf.concat(samples, axis=0))
+        mus_val = sess.run(tf.concat(mus, axis=0))
         # plt.hist(samples_val, alpha=0.4, bins=bins, range=binwidth, label='BBB')
         sns.distplot(samples_val, hist = False, label="BBB", kde = True, kde_kws = {'shade': True})
+        # sns.distplot(mus_val, hist = False, label="BBB", kde = True, kde_kws = {'shade': True})
 
     # Dropout
     tf.reset_default_graph()
     checkpoint = tf.train.get_checkpoint_state(dropout)
-    print(checkpoint.model_checkpoint_path)
 
     with tf.Session() as sess:
         saver = tf.train.import_meta_graph(checkpoint.model_checkpoint_path + '.meta')
@@ -56,6 +59,12 @@ def plot_dists(bayes, baseline, dropout):
                 name = layer + "/" + w
                 # print(name)
                 var = [v for v in tf.trainable_variables() if v.name == name][0]
+                # if layer=="dense":
+                #     var = tf.math.scalar_mul(0.8, var)
+                # if layer=="dense_1":
+                #     var = tf.math.scalar_mul(0.5, var)
+                # if layer=="dense_2":
+                #     var = tf.math.scalar_mul(0.8, var)
                 weights.append(tf.reshape(var, [-1]))
         weights_val = sess.run(tf.concat(weights, axis=0))
         # plt.hist(weights_val, alpha=0.4, bins=bins, range=binwidth, label='Dropout')
@@ -64,7 +73,6 @@ def plot_dists(bayes, baseline, dropout):
     # Baseline
     tf.reset_default_graph()
     checkpoint = tf.train.get_checkpoint_state(baseline)
-    print(checkpoint.model_checkpoint_path)
 
     with tf.Session() as sess:
         saver = tf.train.import_meta_graph(checkpoint.model_checkpoint_path + '.meta')
