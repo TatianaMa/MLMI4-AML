@@ -97,20 +97,23 @@ def run(args):
     ((train_data, train_labels),
     (test_data, test_labels)) = tf.keras.datasets.mnist.load_data()
 
-    train_data, val_data, train_labels, val_labels = train_test_split(train_data,
-                                                                      train_labels,
-                                                                      test_size=config["validation_set_percentage"],
-                                                                      shuffle=True,
-                                                                      stratify=train_labels)
+    if config["validation_set_percentage"] > 0:
+        train_data, val_data, train_labels, val_labels = train_test_split(
+            train_data,
+            train_labels,
+            test_size=config["validation_set_percentage"],
+            shuffle=True,
+            stratify=train_labels)
 
+        val_dataset = mnist_input_fn(val_data,
+                                     val_labels,
+                                     batch_size=len(val_data))
+    else:
+        val_dataset = None
 
     train_dataset = mnist_input_fn(train_data,
                                    train_labels,
                                    batch_size=config["batch_size"])
-
-    val_dataset = mnist_input_fn(val_data,
-                                 val_labels,
-                                 batch_size=len(val_data))
 
 
     # ==========================================================================
@@ -149,12 +152,14 @@ def run(args):
     writer.set_as_default()
 
     train_accuracy = tfe.metrics.Accuracy()
-    val_accuracy = tfe.metrics.Accuracy()
     test_accuracy = tfe.metrics.Accuracy()
 
-    for validation_data, validation_labels in val_dataset:
-        val_data = validation_data
-        val_labels = validation_labels
+    if val_dataset is not None:
+        for validation_data, validation_labels in val_dataset:
+            val_data = validation_data
+            val_labels = validation_labels
+
+        val_accuracy = tfe.metrics.Accuracy()
 
     # ==========================================================================
     # Train the model
@@ -201,16 +206,18 @@ def run(args):
 
 
             logits = model(val_data)
-            val_predictions = tf.argmax(input=logits,
-                                        axis=1)
 
-            val_accuracy(labels=val_labels,
-                        predictions=val_predictions)
-            acc = val_accuracy.result()
+            if val_dataset is not None:
+                val_predictions = tf.argmax(input=logits,
+                                            axis=1)
 
-            print("Validation Accuracy: {:.2f}%".format(100 * acc))
+                val_accuracy(labels=val_labels,
+                            predictions=val_predictions)
+                acc = val_accuracy.result()
 
-            tfs.scalar("Validation Accuracy", acc)
+                print("Validation Accuracy: {:.2f}%".format(100 * acc))
+
+                tfs.scalar("Validation Accuracy", acc)
 
             checkpoint.save(ckpt_prefix)
 
