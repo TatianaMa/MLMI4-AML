@@ -1,29 +1,29 @@
-import numpy as np
 import tensorflow as tf
+import tensorflow_probability as tfp
+import numpy as np
+
+tfe = tf.contrib.eager
+tfs = tf.contrib.summary
+tfs_logger = tfs.record_summaries_every_n_global_steps
+
 import argparse
-import os, tempfile
+import os
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 
-from prune_weights import prune_weights
+from utils import is_valid_file, setup_eager_checkpoints_and_restore
+from variational import VarMNIST
 
-from utils import is_valid_file
-
-from baseline import baseline_model_fn
-from bayes_mnist import bayes_mnist_model_fn
-from dropout_mnist import dropout_mnist_model_fn
-
+tf.enable_eager_execution()
 
 models = {
-    "baseline": baseline_model_fn,
-    "bayes_mnist": bayes_mnist_model_fn,
-    "dropout_mnist": dropout_mnist_model_fn
+    "baseline": None
 }
 
-def mnist_input_fn(data, labels, num_epochs=600, batch_size=128): #shuffle_samples=5000):
+def mnist_input_fn(data, labels, batch_size=128, shuffle_samples=5000):
     dataset = tf.data.Dataset.from_tensor_slices((data, labels))
-    #dataset = dataset.shuffle(shuffle_samples)
-    dataset = dataset.repeat(num_epochs)
+    dataset = dataset.shuffle(shuffle_samples)
     dataset = dataset.map(mnist_parse_fn)
     dataset = dataset.batch(batch_size)
 
@@ -31,69 +31,208 @@ def mnist_input_fn(data, labels, num_epochs=600, batch_size=128): #shuffle_sampl
 
 
 def mnist_parse_fn(data, labels):#shuffle_samples=5000
-    return (tf.cast(data, tf.float32)/126., tf.cast(labels, tf.int32))
+    return (tf.cast(tf.reshape(data, [-1]), tf.float32)/126., tf.cast(labels, tf.int64))
 
 
 def run(args):
 
+    # ==========================================================================
+    # Configuration
+    # ==========================================================================
     config = {
         "training_set_size": 60000,
-        "num_epochs": 600,
+        "num_epochs": 1,
         "batch_size": 128,
-        "pruning_percentile": 98
+        "pruning_percentile": 80,
+        "learning_rate": 1e-3,
+        "log_freq": 100,
+        "checkpoint_name": "_ckpt",
+        "validation_set_percentage": 0.1,
+        "num_units": 400
     }
 
     #num_batches = config["training_set_size"] * config["num_epochs"] / config["batch_size"]
-    num_batches = config["training_set_size"] / config["batch_size"]
+    num_batches = int((1 - config["validation_set_percentage"]) * config["training_set_size"]) / config["batch_size"]
 
-    model_fn = models[args.model]
-
-    params={
-        "data_format": "channels_last",
-        "hidden_units": 800,
-        "dropout": 0.5,
-        "num_mc_samples": 1,
-        "prior": "mixture",
-        "sigma": 0.,
-        "mu": 0.,
-        "mix_prop": 0.25,
-        "sigma1": 7.,
-        "sigma2": 1.,
-        #"kl_coeff": "geometric",
-        "kl_coeff_decay_rate": 1,
-        "kl_coeff": "uniform",
-        "num_batches": num_batches,
-        "optimizer": "adam",
-        "learning_rate": 1e-3,
-        "model_dir": args.model_dir,
-    }
-
-    classifier = tf.estimator.Estimator(model_fn=model_fn,
-                                        model_dir=args.model_dir,
-                                        params=params)
-
-
+    # ==========================================================================
+    # Loading in the dataset
+    # ==========================================================================
     ((train_data, train_labels),
-     (eval_data, eval_labels)) = tf.keras.datasets.mnist.load_data()
+    (test_data, test_labels)) = tf.keras.datasets.mnist.load_data()
 
-    
-    #train_data, eval_data, train_labels, eval_labels = train_test_split(train_data, train_labels, test_size=0.1666666, stratify = train_labels)
+    train_data, val_data, train_labels, val_labels = train_test_split(train_data,
+                                                                      train_labels,
+                                                                      test_size=config["validation_set_percentage"],
+                                                                      shuffle=True,
+                                                                      stratify=train_labels)
 
+
+    train_dataset = mnist_input_fn(train_data,
+                                   train_labels,
+                                   batch_size=config["batch_size"])
+
+    val_dataset = mnist_input_fn(val_data,
+                                 val_labels,
+                                 batch_size=len(val_data))
+
+
+    # ==========================================================================
+    # Define the model
+    # ==========================================================================
+
+    model = VarMNIST(units=config["num_units"],
+                     prior=tfp.distributions.Normal(loc=0., scale=0.3))
+
+    # Connect the model computational graph by executing a forward-pass
+    model(tf.zeros((1, 28, 28)))
+
+    optimizer = tf.train.RMSPropOptimizer(learning_rate=config["learning_rate"])
+
+    # ==========================================================================
+    # Define Checkpoints
+    # ==========================================================================
+
+    global_step = tf.train.get_or_create_global_step()
+
+    trainable_vars = model.get_all_variables() + (global_step,)
+    checkpoint_dir = os.path.join(args.model_dir, "checkpoints")
+
+    checkpoint, ckpt_prefix = setup_eager_checkpoints_and_restore(
+        variables=trainable_vars,
+        checkpoint_dir=checkpoint_dir,
+        checkpoint_name=config["checkpoint_name"])
+
+    # ==========================================================================
+    # Define Tensorboard Summaries
+    # ==========================================================================
+
+    logdir = os.path.join(args.model_dir, "log")
+    writer = tfs.create_file_writer(logdir)
+    writer.set_as_default()
+
+    train_accuracy = tfe.metrics.Accuracy()
+    val_accuracy = tfe.metrics.Accuracy()
+    test_accuracy = tfe.metrics.Accuracy()
+
+    for validation_data, validation_labels in val_dataset:
+        val_data = validation_data
+        val_labels = validation_labels
+
+    # ==========================================================================
+    # Train the model
+    # ==========================================================================
 
     if args.is_training:
-        print("Beginning training of the {} model!".format(args.model))
-        classifier.train(input_fn=lambda:mnist_input_fn(train_data, train_labels, num_epochs=config["num_epochs"]))
-        print("Training finished!")
+        for epoch in range(1, config["num_epochs"] + 1):
+
+            with tqdm(total=num_batches) as pbar:
+                for features, labels in train_dataset:
+                    # Increment global step
+                    global_step.assign_add(1)
+
+                    # Record gradients of the forward pass
+                    with tf.GradientTape() as tape:
+
+                        logits = model(features)
+
+                        kl_coeff = 1. / num_batches
+
+                        # negative ELBO
+                        loss = kl_coeff * model.kl_divergence + model.negative_log_likelihood(logits, labels)
+
+                    # Backprop
+                    grads = tape.gradient(loss, model.get_all_variables())
+                    optimizer.apply_gradients(zip(grads, model.get_all_variables()))
+
+                    # =================================
+                    # Add summaries for tensorboard
+                    # =================================
+                    with tfs_logger(config["log_freq"]):
+                        tfs.scalar("Loss", loss)
+
+                        predictions = tf.argmax(input=logits,
+                                                axis=1)
+                        train_accuracy(labels=labels,
+                                    predictions=predictions)
+
+                        acc = 100 * train_accuracy.result()
+
+                    # Update the progress bar
+                    pbar.update(1)
+                    pbar.set_description("Epoch {}, Train Accuracy: {:.2f}, ELBO: {:.2f}".format(epoch, acc, loss))
+
+
+            logits = model(val_data)
+            val_predictions = tf.argmax(input=logits,
+                                        axis=1)
+
+            val_accuracy(labels=val_labels,
+                        predictions=val_predictions)
+            acc = val_accuracy.result()
+
+            print("Validation Accuracy: {:.2f}%".format(100 * acc))
+
+            tfs.scalar("Validation Accuracy", acc)
+
+            checkpoint.save(ckpt_prefix)
+
+    else:
+        print("Skipping training!")
+
+    # ==========================================================================
+    # Testing
+    # ==========================================================================
+
+    # Silly hack to get the entire training set
+    for data, labels in mnist_input_fn(test_data, test_labels, batch_size=len(test_data)):
+        test_data = data
+        test_labels = labels
+
+    logits = model(test_data)
+    predictions = tf.argmax(input=logits,
+                            axis=1)
+    test_accuracy(labels=test_labels,
+                  predictions=predictions)
+
+    acc = 100 * test_accuracy.result()
+    print("Test accuracy: {:.2f}%".format(acc))
+
+    # ==========================================================================
+    # Weight pruning
+    # ==========================================================================
 
     if args.prune_weights:
-        print("Pruning weights with {} percentile.".format(config["pruning_percentile"]))
-        pruned_model_dir = prune_weights(args.model_dir, config["pruning_percentile"], plot_hist=False)
-        classifier = tf.estimator.Estimator(model_fn=model_fn,
-                                            model_dir=pruned_model_dir,
-                                            params=params)
+        print("Pruning {}% of model parameters!".format(config["pruning_percentile"]))
 
-    eval_results = classifier.evaluate(input_fn=lambda:mnist_input_fn(eval_data, eval_labels))
-    print(eval_results)
+        binwidth = 1
+        snr_vector = np.log(np.abs(model.mu_vector.numpy())) - np.log(model.sigma_vector)
+        snr_vector = 10. * snr_vector
+
+        pruning_threshold = np.percentile(snr_vector,
+                                        q=config["pruning_percentile"],
+                                        interpolation='lower')
+
+        print("Pruning threshold is {:.2f}".format(pruning_threshold))
+
+        model.prune_below_snr(pruning_threshold, verbose=True)
+
+        logits = model(test_data)
+        predictions = tf.argmax(input=logits,
+                                axis=1)
+        test_accuracy(labels=test_labels,
+                    predictions=predictions)
+
+        acc = 100 * test_accuracy.result()
+        print("Pruned {:.2f}% of weights. Accuracy: {}%".format(
+            config["pruning_percentile"],
+            acc))
+
+        plt.hist(snr_vector, bins=np.arange(min(snr_vector), max(snr_vector) + binwidth, binwidth))
+        plt.axvline(x=pruning_threshold, color='tab:red')
+        plt.xlabel('Signal-To-Noise Ratio (dB)')
+        plt.ylabel('Density')
+        plt.title('Histogram of the Signal-To-Noise ratio over all weights in the network')
+        plt.show()
 
 
 if __name__ == "__main__":
@@ -110,3 +249,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     run(args)
+

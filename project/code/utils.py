@@ -24,6 +24,22 @@ def is_valid_file(parser, arg):
         parser.error("A file at the given path cannot be created: " % arg)
 
 
+def setup_eager_checkpoints_and_restore(variables, checkpoint_dir, checkpoint_name="_ckpt"):
+    ckpt_prefix = os.path.join(checkpoint_dir, checkpoint_name)
+
+    checkpoint = tf.train.Checkpoint(**{v.name: v for v in variables})
+
+    latest_checkpoint_path = tf.train.latest_checkpoint(checkpoint_dir)
+
+    if latest_checkpoint_path is None:
+        print("No checkpoint found!")
+    else:
+        print("Checkpoint found at {}, restoring...".format(latest_checkpoint_path))
+        checkpoint.restore(latest_checkpoint_path).assert_consumed()
+        print("Model restored!")
+
+    return checkpoint, ckpt_prefix
+
 def load_mushroom_dataset():
     """
     7. Attribute Information: (classes: edible=e, poisonous=p)

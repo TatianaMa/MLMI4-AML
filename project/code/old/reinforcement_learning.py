@@ -1,47 +1,35 @@
 import numpy as np
 import tensorflow as tf
-import tensorflow_probability as tfp
-
-tfe = tf.contrib.eager
-tfs = tf.contrib.summary
-tfs_logger = tfs.record_summaries_every_n_global_steps
-
-from tqdm import tqdm
-import os
 import argparse
 import matplotlib.pyplot as plt
 import json
 
-from utils import is_valid_file, \
-    load_mushroom_dataset, \
-    generate_new_contexts, \
-    setup_eager_checkpoints_and_restore
-from variational import VarMushroomRL
+from utils import is_valid_file, load_mushroom_dataset, generate_new_contexts
 
-tf.enable_eager_execution()
+from baseline_rl_agent import baseline_rl_agent_model_fn
+from bayes_rl_agent import bayes_rl_agent_model_fn
 
 models = {
-    "baseline": None,
-    "bayes": VarMushroomRL
+    "baseline": baseline_rl_agent_model_fn,
+    "bayes": bayes_rl_agent_model_fn,
 }
 
-def rl_input_fn(contexts, rewards, batch_size=64, shuffle_size=1000):
+def rl_input_fn(contexts, rewards, num_epochs=1, batch_size=64, shuffle_size=1000):
     ds = tf.data.Dataset.from_tensor_slices((contexts, rewards))
     ds = ds.shuffle(shuffle_size)
-    ds = ds.map(lambda data, labels:
-                (tf.cast(data, tf.float32), tf.cast(labels, tf.float32)))
+    ds = ds.repeat(num_epochs)
     ds = ds.batch(batch_size)
 
     return ds
 
 
-def get_action(agent, context, epsilon=0, num_thompson_samples=2):
+def get_action(agent, context, epsilon=0):
     """
     Get the next action as an index (beginning at 0) based on the agent
     and the context vector.
 
     :param agent: The agent exploring the system
-    :type agent: Sonnet model
+    :type agent: TF Estimator
 
     :param context: Context vector from the UCI mushrooms dataset
     :type context: [context_size x 1] numpy array
@@ -52,15 +40,11 @@ def get_action(agent, context, epsilon=0, num_thompson_samples=2):
     # Attach one-hot encoding of actions at the end of context vector
     no_eat_action = np.hstack([context, np.ones((num_contexts, 1)), np.zeros((num_contexts, 1))])
     eat_action = np.hstack([context, np.zeros((num_contexts, 1)), np.ones((num_contexts, 1))])
+    no_eat_rewards = agent.predict(input_fn=lambda: tf.data.Dataset.from_tensor_slices(no_eat_action))
+    no_eat_rewards = np.array(list(no_eat_rewards))
 
-    no_eat_rewards = 0
-    eat_rewards = 1
-
-    # Do Thompson sampling
-    for i in range(num_thompson_samples):
-
-        no_eat_rewards += agent(tf.convert_to_tensor(no_eat_action, dtype=tf.float32)).numpy()
-        eat_rewards += agent(tf.convert_to_tensor(eat_action, dtype=tf.float32)).numpy()
+    eat_rewards = agent.predict(input_fn=lambda: tf.data.Dataset.from_tensor_slices(eat_action))
+    eat_rewards = np.array(list(eat_rewards))
 
     rewards = np.hstack([no_eat_rewards, eat_rewards])
 
@@ -79,77 +63,55 @@ def get_action(agent, context, epsilon=0, num_thompson_samples=2):
     return action
 
 
-def update_agent(agent, optimizer, contexts, rewards, epoch, config):
-    """
-    Updating the agent is just performing a single epoch of SGD
-    """
-    global_step = tf.train.get_or_create_global_step()
-
-    num_batches = len(contexts) // config["batch_size"] + 1
-
-    with tqdm(total=num_batches) as pbar:
-        for context, reward in rl_input_fn(contexts=contexts,
-                                           rewards=rewards):
-            # Increment global step
-            global_step.assign_add(1)
-
-            # Record gradients of the forward pass
-            with tf.GradientTape() as tape:
-
-                logits = agent(context)
-
-                kl_coeff = 1. / num_batches
-
-                # negative ELBO
-                loss = kl_coeff * agent.kl_divergence + agent.negative_log_likelihood(logits, reward)
-
-            # Backprop
-            grads = tape.gradient(loss, agent.get_all_variables())
-            optimizer.apply_gradients(zip(grads, agent.get_all_variables()))
-
-            # =================================
-            # Add summaries for tensorboard
-            # =================================
-            with tfs_logger(config["log_freq"]):
-                tfs.scalar("Loss", loss)
-
-            # Update the progress bar
-            pbar.update(1)
-            pbar.set_description("Epoch {}, ELBO: {:.2f}".format(epoch, loss))
+def update_agent(agent, features, rewards):
+    agent.train(input_fn=lambda:rl_input_fn(features, rewards))
 
 
 def run(args):
 
-    # ==========================================================================
-    # Configuration
-    # ==========================================================================
     if args.eps < 0 or args.eps > 1:
         raise Exception("Epsilon has to be between 0 and 1!")
 
     config = {
         "training_set_size": 8124,
-        "checkpoint_name": "_ckpt",
         "num_epochs": 64,
         "batch_size": 64,
         "replay_buffer_size": 4096,
         "update_every": 20,
-        "max_steps": 1000,
+        "max_steps": 50000,
         "context_size": 112,
         "num_warmup_batches": 00,
-        "log_every": 10,
-        "log_freq": 100,
-        "num_units": 400,
-        "learning_rate": 1e-3,
+        "log_every": 10
     }
 
-    model = models[args.model]
+    model_fn = models[args.model]
 
     num_batches = config["max_steps"] // config["update_every"]
 
-    # ==========================================================================
-    # Loading in the dataset
-    # ==========================================================================
+    # Create agent
+    agent = tf.estimator.Estimator(model_fn=model_fn,
+                                   model_dir=args.model_dir,
+                                   params={
+                                       "context_size": config["context_size"],
+                                       "hidden_units": 100,
+                                       "dropout": 0.5,
+                                       "num_mc_samples": 2,
+                                       "prior": "mixture",
+                                       "sigma": 0.,
+                                       "mu":0.,
+                                       "mix_prop": 0.25,
+                                       "sigma1": 6.,
+                                       "sigma2": 1.,
+                                       #"kl_coeff": "geometric",
+                                       "kl_coeff_decay_rate": 1000,
+                                       "kl_coeff": "uniform",
+                                       "num_batches": num_batches,
+                                       "optimizer": "sgd",
+                                       "learning_rate": 1e-3,
+                                       "verbose": False
+                                   })
 
+    # Load the UCI mushroom dataset
     dataset = load_mushroom_dataset()
 
     data, oracle_reward, oracle_actions, is_edible = generate_new_contexts(
@@ -158,31 +120,6 @@ def run(args):
     )
 
     contexts, no_eat_reward, eat_reward = data
-
-    # ==========================================================================
-    # Define the model
-    # ==========================================================================
-
-    agent = VarMushroomRL(units=config["num_units"],
-                          prior=tfp.distributions.Normal(loc=0., scale=0.3))
-
-    # Connect the model computational graph by executing a forward-pass
-    agent(tf.zeros((1, config["context_size"] + 2), dtype=tf.float32))
-
-    optimizer = tf.train.RMSPropOptimizer(learning_rate=config["learning_rate"])
-
-    # ==========================================================================
-    # Define Checkpoints
-    # ==========================================================================
-
-    global_step = tf.train.get_or_create_global_step()
-
-    trainable_vars = agent.get_all_variables() + (global_step,)
-    checkpoint_dir = os.path.join(args.model_dir, "checkpoints")
-
-    checkpoint, ckpt_prefix = setup_eager_checkpoints_and_restore(variables=trainable_vars,
-                                                                  checkpoint_dir=checkpoint_dir,
-                                                                  checkpoint_name=config["checkpoint_name"])
 
     # ==========================================================================
     # Perform task
@@ -291,13 +228,7 @@ def run(args):
 
 
         # Update the agent's value function
-        update_agent(agent=agent,
-                     optimizer=optimizer,
-                     contexts=replay_buffer,
-                     rewards=np.array(rewards),
-                     epoch=total_batch_index,
-                     config=config)
-        checkpoint.save(ckpt_prefix)
+        update_agent(agent, replay_buffer, np.array(rewards))
 
         oracle_stats["tp"] += sum((action == 1) & (oracle_actions[start_idx:end_idx] == 1))
         oracle_stats["fp"] += sum((action == 1) & (oracle_actions[start_idx:end_idx] == 0))
@@ -368,11 +299,11 @@ if __name__ == "__main__":
 
     parser.add_argument('--eps', type=float, default=0.0,
                         help='Epsilon for the Eps-Greedy policy')
-    parser.add_argument('--model', choices=list(models.keys()), default='bayes',
+    parser.add_argument('--model', choices=list(models.keys()), default='baseline',
                     help='The model to train.')
     parser.add_argument('--no_training', action="store_false", dest="is_training", default=True,
                     help='Should we just evaluate?')
-    parser.add_argument('--model_dir', type=lambda x: is_valid_file(parser, x), default='/tmp/bayes_by_backprop_rl',
+    parser.add_argument('--model_dir', type=lambda x: is_valid_file(parser, x), default='/tmp/bayes_by_backprop',
                     help='The model directory.')
 
     args = parser.parse_args()
