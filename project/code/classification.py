@@ -21,7 +21,7 @@ models = {
     "dropout_mnist": dropout_mnist_model_fn
 }
 
-def mnist_input_fn(data, labels, num_epochs=200, batch_size=128): #shuffle_samples=5000):
+def mnist_input_fn(data, labels, num_epochs=600, batch_size=128): #shuffle_samples=5000):
     dataset = tf.data.Dataset.from_tensor_slices((data, labels))
     #dataset = dataset.shuffle(shuffle_samples)
     dataset = dataset.repeat(num_epochs)
