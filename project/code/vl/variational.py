@@ -19,6 +19,13 @@ class VarMNIST(snt.AbstractModule):
         self._ensure_is_connected()
         return sum([layer.kl_divergence for layer in self._layers])
 
+    def negative_log_likelihood(self, logits, labels):
+        negative_log_likelihood = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            labels=labels,
+            logits=logits)
+
+        return tf.reduce_sum(negative_log_likelihood)
+
     @property
     def mu_vector(self):
         self._ensure_is_connected()
@@ -33,11 +40,11 @@ class VarMNIST(snt.AbstractModule):
                          [tf.reshape(layer.b_sigma, [-1]) for layer in self._layers],
                          axis=0)
 
-    def prune_below_snr(self, snr):
+    def prune_below_snr(self, snr, verbose=False):
         self._ensure_is_connected()
 
         for layer in self._layers:
-            layer.prune_below_snr(snr)
+            layer.prune_below_snr(snr, verbose)
 
     def sample_posterior(self):
         return tfp.distributions.Normal(loc=self.mu_vector, scale=self.sigma_vector).sample()
@@ -85,16 +92,26 @@ class VarLinear(snt.AbstractModule):
         super(VarLinear, self).__init__(name=name)
 
         self._input_shape = None
-        self.output_size = output_size
         self._use_bias = use_bias
+
+        self.output_size = output_size
         self.prior = prior
 
 
-    def prune_below_snr(self, snr):
+    def prune_below_snr(self, snr, verbose=False):
         self._ensure_is_connected()
 
         w_snr = 10. * tf.math.log(tf.abs(self._w_mu) / self.w_sigma)
         w_mask = tf.cast(tf.math.greater(w_snr, snr), dtype=tf.float32)
+
+        if verbose:
+            num_pruned = tf.reduce_sum(1. - w_mask)
+
+            print("Pruning {} out of {} weights ({:.2f}%) on {}".format(
+                int(num_pruned),
+                self._num_weights,
+                100 * num_pruned / self._num_weights,
+                self.module_name))
 
         self._w_mu.assign(self._w_mu * w_mask)
         self._w_rho.assign(tf.contrib.distributions.softplus_inverse(
@@ -103,6 +120,15 @@ class VarLinear(snt.AbstractModule):
         if self._use_bias:
             b_snr = 10. * tf.math.log(tf.abs(self._b_mu) / self.b_sigma)
             b_mask = tf.cast(tf.math.greater(b_snr, snr), dtype=tf.float32)
+
+            if verbose:
+                num_pruned = tf.reduce_sum(1. - b_mask)
+
+                print("Pruning {} out of {} biases ({:.2f}%) on {}".format(
+                    int(num_pruned),
+                    self._num_biases,
+                    100 * num_pruned / self._num_biases,
+                    self.module_name))
 
             self._b_mu.assign(self._b_mu * b_mask)
             self._b_rho.assign(tf.contrib.distributions.softplus_inverse(
@@ -141,6 +167,8 @@ class VarLinear(snt.AbstractModule):
 
         weight_shape = (self._input_shape[1], self.output_size)
 
+        self._num_weights = weight_shape[0] * weight_shape[1]
+
         # Weight parameters
         self._w_mu = tf.get_variable("w_mu",
                                      shape=weight_shape,
@@ -164,6 +192,8 @@ class VarLinear(snt.AbstractModule):
 
         if self._use_bias:
             bias_shape = (self.output_size,)
+
+            self._num_biases = self.output_size
 
             self._b_mu = tf.get_variable("b_mu",
                                          shape=bias_shape,

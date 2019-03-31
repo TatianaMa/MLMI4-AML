@@ -43,7 +43,7 @@ def run(args):
         "training_set_size": 60000,
         "num_epochs": 1,
         "batch_size": 128,
-        "pruning_percentile": 70,
+        "pruning_percentile": 80,
         "learning_rate": 1e-3,
         "log_freq": 100,
         "checkpoint_postfix": "_ckpt",
@@ -124,63 +124,62 @@ def run(args):
     # Train the model
     # ==========================================================================
 
-    for epoch in range(1, config["num_epochs"] + 1):
+    if args.is_training:
+        for epoch in range(1, config["num_epochs"] + 1):
 
-        with tqdm(total=num_batches) as pbar:
-            for features, labels in train_dataset:
-                # Increment global step
-                global_step.assign_add(1)
+            with tqdm(total=num_batches) as pbar:
+                for features, labels in train_dataset:
+                    # Increment global step
+                    global_step.assign_add(1)
 
-                # Record gradients of the forward pass
-                with tf.GradientTape() as tape:
+                    # Record gradients of the forward pass
+                    with tf.GradientTape() as tape:
 
-                    logits = model(features)
+                        logits = model(features)
 
-                    negative_log_likelihood = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                        labels=labels,
-                        logits=logits)
-                    negative_log_likelihood = tf.reduce_sum(negative_log_likelihood)
+                        kl_coeff = 1. / num_batches
 
-                    kl_coeff = 1. / num_batches
+                        # negative ELBO
+                        loss = kl_coeff * model.kl_divergence + model.negative_log_likelihood(logits, labels)
 
-                    # negative ELBO
-                    loss = kl_coeff * model.kl_divergence + negative_log_likelihood
+                    # Backprop
+                    grads = tape.gradient(loss, model.get_all_variables())
+                    optimizer.apply_gradients(zip(grads, model.get_all_variables()))
 
-                # Backprop
-                grads = tape.gradient(loss, model.get_all_variables())
-                optimizer.apply_gradients(zip(grads, model.get_all_variables()))
+                    # =================================
+                    # Add summaries for tensorboard
+                    # =================================
+                    with tfs_logger(config["log_freq"]):
+                        tfs.scalar("Loss", loss)
 
-                # =================================
-                # Add summaries for tensorboard
-                # =================================
-                with tfs_logger(config["log_freq"]):
-                    tfs.scalar("Loss", loss)
+                        predictions = tf.argmax(input=logits,
+                                                axis=1)
+                        train_accuracy(labels=labels,
+                                    predictions=predictions)
 
-                    predictions = tf.argmax(input=logits,
-                                            axis=1)
-                    train_accuracy(labels=labels,
-                                   predictions=predictions)
+                        acc = 100 * train_accuracy.result()
 
-                    acc = 100 * train_accuracy.result()
-
-                # Update the progress bar
-                pbar.update(1)
-                pbar.set_description("Epoch {}, Train Accuracy: {:.2f}, ELBO: {:.2f}".format(epoch, acc, loss))
+                    # Update the progress bar
+                    pbar.update(1)
+                    pbar.set_description("Epoch {}, Train Accuracy: {:.2f}, ELBO: {:.2f}".format(epoch, acc, loss))
 
 
-        logits = model(val_data)
-        val_predictions = tf.argmax(input=logits,
-                                    axis=1)
+            logits = model(val_data)
+            val_predictions = tf.argmax(input=logits,
+                                        axis=1)
 
-        val_accuracy(labels=val_labels,
-                     predictions=val_predictions)
-        acc = val_accuracy.result()
+            val_accuracy(labels=val_labels,
+                        predictions=val_predictions)
+            acc = val_accuracy.result()
 
-        print("Validation Accuracy: {:.2f}%".format(100 * acc))
+            print("Validation Accuracy: {:.2f}%".format(100 * acc))
 
-        tfs.scalar("Validation Accuracy", acc)
+            tfs.scalar("Validation Accuracy", acc)
 
-        checkpoint.save(ckpt_prefix)
+            checkpoint.save(ckpt_prefix)
+
+    else:
+        print("Skipping training!")
 
     # ==========================================================================
     # Testing
@@ -204,35 +203,38 @@ def run(args):
     # Weight pruning
     # ==========================================================================
 
-    binwidth = 1
-    snr_vector = np.log(np.abs(model.mu_vector.numpy())) - np.log(model.sigma_vector)
-    snr_vector = 10. * snr_vector
+    if args.prune_weights:
+        print("Pruning {}% of model parameters!".format(config["pruning_percentile"]))
 
-    pruning_threshold = np.percentile(snr_vector,
-                                      q=config["pruning_percentile"],
-                                      interpolation='lower')
+        binwidth = 1
+        snr_vector = np.log(np.abs(model.mu_vector.numpy())) - np.log(model.sigma_vector)
+        snr_vector = 10. * snr_vector
 
-    print("Pruning threshold is {:.2f}".format(pruning_threshold))
+        pruning_threshold = np.percentile(snr_vector,
+                                        q=config["pruning_percentile"],
+                                        interpolation='lower')
 
-    model.prune_below_snr(pruning_threshold)
+        print("Pruning threshold is {:.2f}".format(pruning_threshold))
 
-    logits = model(test_data)
-    predictions = tf.argmax(input=logits,
-                            axis=1)
-    test_accuracy(labels=test_labels,
-                  predictions=predictions)
+        model.prune_below_snr(pruning_threshold, verbose=True)
 
-    acc = 100 * test_accuracy.result()
-    print("Pruned {:.2f}% of weights. Accuracy: {}%".format(
-        config["pruning_percentile"],
-        acc))
+        logits = model(test_data)
+        predictions = tf.argmax(input=logits,
+                                axis=1)
+        test_accuracy(labels=test_labels,
+                    predictions=predictions)
 
-    plt.hist(snr_vector, bins=np.arange(min(snr_vector), max(snr_vector) + binwidth, binwidth))
-    plt.axvline(x=pruning_threshold, color='tab:red')
-    plt.xlabel('Signal-To-Noise Ratio (dB)')
-    plt.ylabel('Density')
-    plt.title('Histogram of the Signal-To-Noise ratio over all weights in the network')
-    plt.show()
+        acc = 100 * test_accuracy.result()
+        print("Pruned {:.2f}% of weights. Accuracy: {}%".format(
+            config["pruning_percentile"],
+            acc))
+
+        plt.hist(snr_vector, bins=np.arange(min(snr_vector), max(snr_vector) + binwidth, binwidth))
+        plt.axvline(x=pruning_threshold, color='tab:red')
+        plt.xlabel('Signal-To-Noise Ratio (dB)')
+        plt.ylabel('Density')
+        plt.title('Histogram of the Signal-To-Noise ratio over all weights in the network')
+        plt.show()
 
 
 if __name__ == "__main__":
