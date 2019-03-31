@@ -14,6 +14,7 @@ from sklearn.model_selection import train_test_split
 import json
 
 from utils import is_valid_file, setup_eager_checkpoints_and_restore
+from compression import snr
 from variational import VarMNIST, create_gaussian_prior, create_mixture_prior
 from baseline import BaseMNIST
 
@@ -207,7 +208,7 @@ def run(args):
 
             if val_dataset is not None:
                 logits = model(val_data)
-                
+
                 val_predictions = tf.argmax(input=logits,
                                             axis=1)
 
@@ -251,8 +252,7 @@ def run(args):
         print("Pruning {}% of model parameters!".format(config["pruning_percentile"]))
 
         binwidth = 1
-        snr_vector = np.log(np.abs(model.mu_vector.numpy())) - np.log(model.sigma_vector)
-        snr_vector = 10. * snr_vector
+        snr_vector = snr(model.mu_vector.numpy(), model.sigma_vector.numpy())
 
         pruning_threshold = np.percentile(snr_vector,
                                         q=config["pruning_percentile"],
@@ -267,6 +267,9 @@ def run(args):
                                 axis=1)
         test_accuracy(labels=test_labels,
                     predictions=predictions)
+
+        # Compress
+        model.compress()
 
         acc = 100 * test_accuracy.result()
         print("Pruned {:.2f}% of weights. Accuracy: {}%".format(

@@ -2,6 +2,8 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import sonnet as snt
 
+from compression import eliminate_dead_neurons
+
 class VarEstimator(snt.AbstractModule):
     """
     Abstract superclass for any variational architecture where some of the layers
@@ -54,6 +56,13 @@ class VarEstimator(snt.AbstractModule):
 
     def sample_posterior(self):
         return tfp.distributions.Normal(loc=self.mu_vector, scale=self.sigma_vector).sample()
+
+    def compress(self):
+        eliminate_dead_neurons(w_mus=[layer.w_mu.numpy() for layer in self._layers],
+                               w_sigmas=[layer.w_sigma.numpy() for layer in self._layers],
+                               b_mus=[layer.b_mu.numpy() for layer in self._layers],
+                               b_sigmas=[layer.b_sigma.numpy() for layer in self._layers],
+                               activations=[tf.nn.relu, tf.nn.relu, lambda x: x])
 
 
 class VarMushroomRL(VarEstimator):
