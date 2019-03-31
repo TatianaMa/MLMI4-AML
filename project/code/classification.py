@@ -205,9 +205,9 @@ def run(args):
                     pbar.set_description("Epoch {}, Train Accuracy: {:.2f}, ELBO: {:.2f}".format(epoch, acc, loss))
 
 
-            logits = model(val_data)
-
             if val_dataset is not None:
+                logits = model(val_data)
+                
                 val_predictions = tf.argmax(input=logits,
                                             axis=1)
 
