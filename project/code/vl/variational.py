@@ -17,8 +17,30 @@ class VarMNIST(snt.AbstractModule):
     @property
     def kl_divergence(self):
         self._ensure_is_connected()
-        return self._kl_divergence
+        return sum([layer.kl_divergence for layer in self._layers])
 
+    @property
+    def mu_vector(self):
+        self._ensure_is_connected()
+        return tf.concat([tf.reshape(layer.w_mu, [-1]) for layer in self._layers] + \
+                         [tf.reshape(layer.b_mu, [-1]) for layer in self._layers],
+                         axis=0)
+
+    @property
+    def sigma_vector(self):
+        self._ensure_is_connected()
+        return tf.concat([tf.reshape(layer.w_sigma, [-1]) for layer in self._layers] + \
+                         [tf.reshape(layer.b_sigma, [-1]) for layer in self._layers],
+                         axis=0)
+
+    def prune_below_snr(self, snr):
+        self._ensure_is_connected()
+
+        for layer in self._layers:
+            layer.prune_below_snr(snr)
+
+    def sample_posterior(self):
+        return tfp.distributions.Normal(loc=self.mu_vector, scale=self.sigma_vector).sample()
 
     def _build(self, inputs):
 
@@ -46,10 +68,7 @@ class VarMNIST(snt.AbstractModule):
 
         logits = linear_out(dense)
 
-        self._kl_divergence = \
-            linear_1.kl_divergence + \
-            linear_2.kl_divergence + \
-            linear_out.kl_divergence
+        self._layers = [linear_1, linear_2, linear_out]
 
         return logits
 
@@ -69,6 +88,25 @@ class VarLinear(snt.AbstractModule):
         self.output_size = output_size
         self._use_bias = use_bias
         self.prior = prior
+
+
+    def prune_below_snr(self, snr):
+        self._ensure_is_connected()
+
+        w_snr = 10. * tf.math.log(tf.abs(self._w_mu) / self.w_sigma)
+        w_mask = tf.cast(tf.math.greater(w_snr, snr), dtype=tf.float32)
+
+        self._w_mu.assign(self._w_mu * w_mask)
+        self._w_rho.assign(tf.contrib.distributions.softplus_inverse(
+            self.w_sigma * w_mask))
+
+        if self._use_bias:
+            b_snr = 10. * tf.math.log(tf.abs(self._b_mu) / self.b_sigma)
+            b_mask = tf.cast(tf.math.greater(b_snr, snr), dtype=tf.float32)
+
+            self._b_mu.assign(self._b_mu * b_mask)
+            self._b_rho.assign(tf.contrib.distributions.softplus_inverse(
+                self.b_sigma * b_mask))
 
     def _build(self, inputs):
 
@@ -154,3 +192,32 @@ class VarLinear(snt.AbstractModule):
         self._ensure_is_connected()
         return self._kl_divergence
 
+    @property
+    def w_mu(self):
+        self._ensure_is_connected()
+        return self._w_mu
+
+    @property
+    def w_rho(self):
+        self._ensure_is_connected()
+        return self._w_rho
+
+    @property
+    def w_sigma(self):
+        self._ensure_is_connected()
+        return tf.nn.softplus(self._w_rho)
+
+    @property
+    def b_mu(self):
+        self._ensure_is_connected()
+        return self._b_mu
+
+    @property
+    def b_rho(self):
+        self._ensure_is_connected()
+        return self._b_rho
+
+    @property
+    def b_sigma(self):
+        self._ensure_is_connected()
+        return tf.nn.softplus(self._b_rho)

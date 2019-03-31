@@ -41,13 +41,13 @@ def run(args):
     # ==========================================================================
     config = {
         "training_set_size": 60000,
-        "num_epochs": 10,
+        "num_epochs": 1,
         "batch_size": 128,
-        "pruning_percentile": 98,
+        "pruning_percentile": 70,
         "learning_rate": 1e-3,
         "log_freq": 100,
         "checkpoint_postfix": "_ckpt",
-        "validation_set_percentage": 0.1
+        "validation_set_percentage": 0.1,
     }
 
     #num_batches = config["training_set_size"] * config["num_epochs"] / config["batch_size"]
@@ -93,7 +93,7 @@ def run(args):
 
     ckpt_prefix = os.path.join(args.model_dir, "checkpoints", config["checkpoint_postfix"])
 
-    checkpoint = tf.train.Checkpoint(**{v.name: v for v in model.get_all_variables()})
+    checkpoint = tf.train.Checkpoint(**{v.name: v for v in model.get_all_variables() + (global_step,)})
 
     latest_checkpoint_path = tf.train.latest_checkpoint(os.path.join(args.model_dir, "checkpoints"))
 
@@ -105,7 +105,7 @@ def run(args):
         print("Model restored!")
 
     # ==========================================================================
-    # Define Tensorboard Summary writer
+    # Define Tensorboard Summaries
     # ==========================================================================
 
     logdir = os.path.join(args.model_dir, "log")
@@ -114,6 +114,7 @@ def run(args):
 
     train_accuracy = tfe.metrics.Accuracy()
     val_accuracy = tfe.metrics.Accuracy()
+    test_accuracy = tfe.metrics.Accuracy()
 
     for validation_data, validation_labels in val_dataset:
         val_data = validation_data
@@ -173,11 +174,65 @@ def run(args):
 
         val_accuracy(labels=val_labels,
                      predictions=val_predictions)
-        acc = 100 * val_accuracy.result()
+        acc = val_accuracy.result()
 
-        print("Validation Accuracy: {:.2f}%".format(acc))
+        print("Validation Accuracy: {:.2f}%".format(100 * acc))
+
+        tfs.scalar("Validation Accuracy", acc)
 
         checkpoint.save(ckpt_prefix)
+
+    # ==========================================================================
+    # Testing
+    # ==========================================================================
+
+    # Silly hack to get the entire training set
+    for data, labels in mnist_input_fn(test_data, test_labels, batch_size=len(test_data)):
+        test_data = data
+        test_labels = labels
+
+    logits = model(test_data)
+    predictions = tf.argmax(input=logits,
+                            axis=1)
+    test_accuracy(labels=test_labels,
+                  predictions=predictions)
+
+    acc = 100 * test_accuracy.result()
+    print("Test accuracy: {:.2f}%".format(acc))
+
+    # ==========================================================================
+    # Weight pruning
+    # ==========================================================================
+
+    binwidth = 1
+    snr_vector = np.log(np.abs(model.mu_vector.numpy())) - np.log(model.sigma_vector)
+    snr_vector = 10. * snr_vector
+
+    pruning_threshold = np.percentile(snr_vector,
+                                      q=config["pruning_percentile"],
+                                      interpolation='lower')
+
+    print("Pruning threshold is {:.2f}".format(pruning_threshold))
+
+    model.prune_below_snr(pruning_threshold)
+
+    logits = model(test_data)
+    predictions = tf.argmax(input=logits,
+                            axis=1)
+    test_accuracy(labels=test_labels,
+                  predictions=predictions)
+
+    acc = 100 * test_accuracy.result()
+    print("Pruned {:.2f}% of weights. Accuracy: {}%".format(
+        config["pruning_percentile"],
+        acc))
+
+    plt.hist(snr_vector, bins=np.arange(min(snr_vector), max(snr_vector) + binwidth, binwidth))
+    plt.axvline(x=pruning_threshold, color='tab:red')
+    plt.xlabel('Signal-To-Noise Ratio (dB)')
+    plt.ylabel('Density')
+    plt.title('Histogram of the Signal-To-Noise ratio over all weights in the network')
+    plt.show()
 
 
 if __name__ == "__main__":
