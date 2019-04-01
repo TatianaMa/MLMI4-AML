@@ -8,7 +8,7 @@ def snr(mus, sigmas):
                                                                                sigmas.shape)
         )
 
-    return 10. * (np.log(np.abs(mus)) - np.log(sigmas))
+    return 10. * (np.log10(np.abs(mus)) - np.log10(sigmas))
 
 def eliminate_dead_neurons(w_mus, w_sigmas, b_mus, b_sigmas, activations):
     """

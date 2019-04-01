@@ -13,8 +13,8 @@
         "mix_prop": 0.25,
         "mu": 0.0,
         "sigma": 0.0,
-        "sigma1": 7.0,
-        "sigma2": 1.0
+        "sigma1": 0.28,
+        "sigma2": 4.6
     },
     "pruning_percentile": 80,
     "training_set_size": 60000,

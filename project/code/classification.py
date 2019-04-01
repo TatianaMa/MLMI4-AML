@@ -264,7 +264,7 @@ def run(args):
     if args.prune_weights:
         print("Pruning {}% of model parameters!".format(config["pruning_percentile"]))
 
-        binwidth = 1
+        binwidth = 0.5
         snr_vector = snr(model.mu_vector.numpy(), model.sigma_vector.numpy())
 
         pruning_threshold = np.percentile(snr_vector,
@@ -282,7 +282,7 @@ def run(args):
                     predictions=predictions)
 
         # Compress
-        model.compress()
+        # model.compress()
 
         acc = 100 * test_accuracy.result()
         print("Pruned {:.2f}% of weights. Accuracy: {}%".format(
