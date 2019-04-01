@@ -90,7 +90,17 @@ def run(args):
     #num_batches = config["training_set_size"] * config["num_epochs"] / config["batch_size"]
     num_batches = int((1 - config["validation_set_percentage"]) * config["training_set_size"]) / config["batch_size"]
 
+    print("Num batches: {}".format(num_batches))
+
     weight_prior = priors[config["prior"]](config["prior_params"])
+    # print(weight_prior)
+
+    # xs = np.linspace(-2., 2., 60)
+
+    # plt.plot(xs, weight_prior.prob(xs))
+    # plt.show()
+
+    # return
 
     # ==========================================================================
     # Loading in the dataset
@@ -179,10 +189,13 @@ def run(args):
 
                         logits = model(features)
 
-                        kl_coeff = config["beta"] / num_batches
+                        kl_coeff = config["beta"] / float(num_batches)
+
+                        kl_divergence = kl_coeff * model.kl_divergence
+                        neg_log_prob = model.negative_log_likelihood(logits, labels)
 
                         # negative ELBO
-                        loss = kl_coeff * model.kl_divergence + model.negative_log_likelihood(logits, labels)
+                        loss =  kl_divergence + neg_log_prob
 
                     # Backprop
                     grads = tape.gradient(loss, model.get_all_variables())
@@ -203,7 +216,7 @@ def run(args):
 
                     # Update the progress bar
                     pbar.update(1)
-                    pbar.set_description("Epoch {}, Train Accuracy: {:.2f}, ELBO: {:.2f}".format(epoch, acc, loss))
+                    pbar.set_description("Epoch {}, Train Accuracy: {:.2f}, ELBO: {:.2f}, KL: {:.2f}, Log Prob: {:.4f}".format(epoch, acc, loss, kl_divergence, -neg_log_prob))
 
 
             if val_dataset is not None:

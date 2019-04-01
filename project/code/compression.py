@@ -37,7 +37,7 @@ def eliminate_dead_neurons(w_mus, w_sigmas, b_mus, b_sigmas, activations):
         w_mus[i] = w_mu[keep_indices, :]
         w_sigmas[i] = w_sigma[keep_indices, :]
 
-        # Remove rows on previous layer and unused biases
+        # Remove columns on previous layer and unused biases
         if i > 0:
             w_mus[i - 1] = w_mus[i - 1][:, keep_indices]
             w_sigmas[i - 1] = w_sigmas[i - 1][:, keep_indices]
@@ -46,6 +46,41 @@ def eliminate_dead_neurons(w_mus, w_sigmas, b_mus, b_sigmas, activations):
             b_sigmas[i - 1] = b_sigmas[i - 1][keep_indices]
         else:
             kept_input_indices = keep_indices
+
+        print("Shapes: {}, {}".format(w_mus[i].shape, b_mus[i].shape))
+
+    print(np.sum(w_mus[2] != 0., axis=1))
+
+    # Forward pass
+    for i in range(num_layers):
+
+        w_mu = w_mus[i]
+        w_sigma = w_sigmas[i]
+
+        num_cols = w_mu.shape[1]
+
+        # Check for a zero-row
+        # Only weights set by pruning will have 0 variance
+        keep_indices = [j for j in range(num_cols) if not np.all(w_sigma[:, j] == 0)]
+
+        print(len(keep_indices))
+
+        # Remove columns on current layer
+        w_mus[i] = w_mu[:, keep_indices]
+        w_sigmas[i] = w_sigma[:, keep_indices]
+
+        # Remove rows on next layer and absorb dead neurons into biases
+        if i > 0:
+            w_mus[i - 1] = w_mus[i - 1][keep_indices, :]
+            w_sigmas[i - 1] = w_sigmas[i - 1][keep_indices, :]
+
+            b_mus[i - 1] = b_mus[i - 1][keep_indices]
+            b_sigmas[i - 1] = b_sigmas[i - 1][keep_indices]
+        else:
+            kept_input_indices = keep_indices
+
+        print("Shapes: {}, {}".format(w_mus[i].shape, b_mus[i].shape))
+
 
     return w_mus, w_sigmas, b_mus, b_sigmas
 
