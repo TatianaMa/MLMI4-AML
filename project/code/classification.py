@@ -15,7 +15,7 @@ import json
 
 from utils import is_valid_file, setup_eager_checkpoints_and_restore
 from compression import snr
-from variational import VarMNIST, create_gaussian_prior, create_mixture_prior
+from variational import VarMNIST
 from baseline import BaseMNIST
 
 tf.enable_eager_execution()
@@ -25,10 +25,7 @@ models = {
     "bayes": VarMNIST
 }
 
-priors = {
-    "gaussian": create_gaussian_prior,
-    "mixture": create_mixture_prior
-}
+
 
 optimizers = {
     "sgd": tf.train.GradientDescentOptimizer,
@@ -58,28 +55,29 @@ def run(args):
     # ==========================================================================
     config = {
         "training_set_size": 60000,
-        "num_epochs": 1,
+        "num_epochs": 5,
         "batch_size": 128,
         "pruning_percentile": 80,
-        "learning_rate": 1e-3,
+        "learning_rate": 3e-4,
         "log_freq": 100,
         "checkpoint_name": "_ckpt",
         "validation_set_percentage": 0.1,
-        "num_units": 800,
+        "num_units": 400,
         "dropout": True,
         "prior_params": {
             # Parameters for Gaussian prior
-            "sigma": 0.,
+            "sigma": float(-np.log(0.4)),
             "mu": 0.,
 
             # Parameters for scale mixture prior
             "mix_prop": 0.25,
-            "sigma1": 7.,
+            "sigma1": 5.,
             "sigma2": 1.,
         },
         "prior": "mixture",
-        "optimizer": "adam",
-        "beta": 1.
+        "reparametrisation": 'global',
+        "optimizer": "momentum",
+        "beta": 0.1
     }
 
     if args.config is not None:
@@ -92,7 +90,6 @@ def run(args):
 
     print("Num batches: {}".format(num_batches))
 
-    weight_prior = priors[config["prior"]](config["prior_params"])
     # print(weight_prior)
 
     # xs = np.linspace(-2., 2., 60)
@@ -132,7 +129,9 @@ def run(args):
     # ==========================================================================
 
     model = models[args.model](units=config["num_units"],
-                               prior=weight_prior,
+                               reparametrisation=config["reparametrisation"],
+                               prior=config["prior"],
+                               prior_params=config["prior_params"],
                                dropout=config["dropout"])
 
     # Connect the model computational graph by executing a forward-pass

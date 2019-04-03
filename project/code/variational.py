@@ -4,6 +4,59 @@ import sonnet as snt
 
 from compression import eliminate_dead_neurons
 
+
+# ==============================================================================
+# Auxiliary functions
+# ==============================================================================
+
+def create_gaussian_prior(params):
+    prior = tfp.distributions.Normal(loc=params["mu"], scale=tf.exp(-params["sigma"]))
+    return prior
+
+def get_reparameterized_log_prob_with_gaussian_prior(prior, inputs, outputs):
+    total_var = prior.variance() * tf.reduce_sum(tf.math.square(inputs), axis=1)
+
+    num_units = outputs.get_shape().as_list()[1]
+    total_var = tf.reshape(tf.tile(total_var, [num_units]), [-1, num_units])
+
+    return tfp.distributions.Normal(loc=0., scale=total_var).log_prob(outputs)
+
+def kl_normal_normal(mu1, mu2, sigma1, sigma2):
+    return tf.math.log(sigma2) - tf.math.log(sigma1) \
+        + tf.math.square(sigma1) + tf.math.squared_difference(mu1, mu2) \
+        / (2 * tf.math.square(sigma2)) - 0.5
+
+def create_mixture_prior(params):
+    prior = tfp.distributions.Mixture(
+        cat = tfp.distributions.Categorical(probs=[params["mix_prop"], 1. - params["mix_prop"]]),
+        components=[
+            tfp.distributions.Normal(loc=0., scale=tf.exp(-params["sigma1"])),
+            tfp.distributions.Normal(loc=0., scale=tf.exp(-params["sigma2"])),
+        ])
+    return prior
+
+def neg_log_prob_with_categorical(logits, labels):
+    neg_log_prob = tf.nn.sparse_softmax_cross_entropy_with_logits(
+        labels=labels,
+        logits=logits)
+
+    return tf.reduce_sum(neg_log_prob)
+
+def neg_log_prob_with_gaussian(predictions, labels, sigma=1.):
+    neg_log_prob = tf.losses.mean_squared_error(
+        predictions=tf.reshape(predictions, [-1, 1]),
+        labels=labels)
+
+    neg_log_prob = neg_log_prob / (2 * sigma**2) + tf.math.log(sigma)
+
+    return neg_log_prob
+
+
+# ==============================================================================
+# Varational estimators
+# ==============================================================================
+
+
 class VarEstimator(snt.AbstractModule):
     """
     Abstract superclass for any variational architecture where some of the layers
@@ -12,6 +65,8 @@ class VarEstimator(snt.AbstractModule):
 
     def __init__(self,
                  prior,
+                 prior_params,
+                 reparametrisation,
                  name="var_estimator"):
 
         # Call to super
@@ -19,10 +74,12 @@ class VarEstimator(snt.AbstractModule):
 
         # Private fields
         self._layers = []
-        self.is_training = True
+        self._reparametrisation=reparametrisation
 
         # Public fields
+        self.is_training = True
         self.prior = prior
+        self.prior_params = prior_params
 
 
     def negative_log_likelihood(self, logits, labels):
@@ -72,9 +129,13 @@ class VarMushroomRL(VarEstimator):
     def __init__(self,
                  units,
                  prior,
+                 prior_params,
+                 reparametrisation,
                  name="var_mushroom_rl"):
 
         super(VarMushroomRL, self).__init__(prior=prior,
+                                            prior_params=prior_params,
+                                            reparametrisation=reparametrisation,
                                             name=name)
 
         self.units = units
@@ -90,21 +151,27 @@ class VarMushroomRL(VarEstimator):
 
         # First linear layer
         linear_1 = VarLinear(output_size=self.units,
-                             prior=self.prior)
+                             reparametrisation=self._reparametrisation,
+                             prior=self.prior,
+                             prior_params=self.prior_params)
 
         dense = linear_1(flattened)
         dense = tf.nn.relu(dense)
 
         # Second linear layer
         linear_2 = VarLinear(output_size=self.units,
-                             prior=self.prior)
+                             reparametrisation=self._reparametrisation,
+                             prior=self.prior,
+                             prior_params=self.prior_params)
 
         dense = linear_2(dense)
         dense = tf.nn.relu(dense)
 
         # Final linear layer
         linear_out = VarLinear(output_size=1,
-                               prior=self.prior)
+                             reparametrisation=self._reparametrisation,
+                               prior=self.prior,
+                               prior_params=self.prior_params)
 
         logits = linear_out(dense)
 
@@ -121,9 +188,13 @@ class VarRegression(VarEstimator):
     def __init__(self,
                  units,
                  prior,
+                 prior_params,
+                 reparametrisation,
                  name="var_regression"):
 
         super(VarRegression, self).__init__(prior=prior,
+                                            prior_params=prior_params,
+                                            reparametrisation=reparametrisation,
                                             name=name)
 
         self.units = units
@@ -140,21 +211,27 @@ class VarRegression(VarEstimator):
 
         # First linear layer
         linear_1 = VarLinear(output_size=self.units,
-                             prior=self.prior)
+                             reparametrisation=self._reparametrisation,
+                             prior=self.prior,
+                             prior_params=self.prior_params)
 
         dense = linear_1(flattened)
         dense = tf.nn.relu(dense)
 
         # Second linear layer
         linear_2 = VarLinear(output_size=self.units,
-                             prior=self.prior)
+                             reparametrisation=self._reparametrisation,
+                             prior=self.prior,
+                             prior_params=self.prior_params)
 
         dense = linear_2(dense)
         dense = tf.nn.relu(dense)
 
         # Final linear layer
         linear_out = VarLinear(output_size=1,
-                               prior=self.prior)
+                               reparametrisation=self._reparametrisation,
+                               prior=self.prior,
+                               prior_params=self.prior_params)
 
         logits = linear_out(dense)
 
@@ -170,10 +247,14 @@ class VarMNIST(VarEstimator):
     def __init__(self,
                  units,
                  prior,
+                 prior_params,
+                 reparametrisation,
                  name="var_mnist",
                  **kwargs):
 
         super(VarMNIST, self).__init__(prior=prior,
+                                       prior_params=prior_params,
+                                       reparametrisation=reparametrisation,
                                        name=name)
 
         self.units = units
@@ -189,21 +270,27 @@ class VarMNIST(VarEstimator):
 
         # First linear layer
         linear_1 = VarLinear(output_size=self.units,
-                             prior=self.prior)
+                             reparametrisation=self._reparametrisation,
+                             prior=self.prior,
+                             prior_params=self.prior_params)
 
         dense = linear_1(flattened)
         dense = tf.nn.relu(dense)
 
         # Second linear layer
         linear_2 = VarLinear(output_size=self.units,
-                             prior=self.prior)
+                             reparametrisation=self._reparametrisation,
+                             prior=self.prior,
+                             prior_params=self.prior_params)
 
         dense = linear_2(dense)
         dense = tf.nn.relu(dense)
 
         # Final linear layer
         linear_out = VarLinear(output_size=10,
-                               prior=self.prior)
+                               reparametrisation=self._reparametrisation,
+                               prior=self.prior,
+                               prior_params=self.prior_params)
 
         logits = linear_out(dense)
 
@@ -217,9 +304,18 @@ class VarLinear(snt.AbstractModule):
     Variational fully-connected layer
     """
 
+    _possible_priors = {
+        "gaussian": create_gaussian_prior,
+        "mixture": create_mixture_prior
+    }
+
+    _possible_reparametrisations = set(['local', 'global'])
+
     def __init__(self,
                  output_size,
                  prior,
+                 prior_params,
+                 reparametrisation,
                  use_bias=True,
                  name="var_linear"):
 
@@ -229,8 +325,17 @@ class VarLinear(snt.AbstractModule):
         self._input_shape = None
         self._use_bias = use_bias
 
+        if reparametrisation not in self._possible_reparametrisations:
+            raise Exception("Invalid reparametrisation!")
+        self._reparametrisation=reparametrisation
+
         self.output_size = output_size
+
+        if prior not in self._possible_priors:
+            raise Exception("Invalid prior")
+
         self.prior = prior
+        self.prior_params = prior_params
 
 
     def prune_below_snr(self, snr, verbose=False):
@@ -297,6 +402,8 @@ class VarLinear(snt.AbstractModule):
         self._input_shape = input_shape
         dtype = inputs.dtype
 
+        self._prior_dist = self._possible_priors[self.prior](self.prior_params)
+
         mu_init = tf.initializers.glorot_uniform()
         rho_init = tf.initializers.constant(-3)
 
@@ -314,17 +421,6 @@ class VarLinear(snt.AbstractModule):
                                       dtype=dtype,
                                       initializer=rho_init)
 
-        w_dist = tfp.distributions.Normal(loc=self._w_mu,
-                                          scale=tf.nn.softplus(self._w_rho))
-
-        w = w_dist.sample()
-
-        # Calculate KL-divergence for later
-        self._kl_divergence = tf.reduce_sum(w_dist.log_prob(w) - self.prior.log_prob(w))
-
-        # a = x'W, where W ~ q(W | mu, theta)
-        outputs = tf.matmul(inputs, w)
-
         if self._use_bias:
             bias_shape = (self.output_size,)
 
@@ -339,16 +435,65 @@ class VarLinear(snt.AbstractModule):
                                           dtype=dtype,
                                           initializer=rho_init)
 
-            b_dist = tfp.distributions.Normal(loc=self._b_mu,
-                                              scale=tf.nn.softplus(self._b_rho))
 
-            b = b_dist.sample()
-            self._kl_divergence += tf.reduce_sum(b_dist.log_prob(b) - self.prior.log_prob(b))
+        if self._reparametrisation == 'global':
+            w_dist = tfp.distributions.Normal(loc=self._w_mu,
+                                              scale=tf.nn.softplus(self._w_rho))
+
+            w = w_dist.sample()
+
+            # Calculate KL-divergence for later
+            self._kl_divergence = tf.reduce_sum(w_dist.log_prob(w) - self._prior_dist.log_prob(w))
+
+            # a = x'W, where W ~ q(W | mu, theta)
+            outputs = tf.matmul(inputs, w)
+
+            if self._use_bias:
+
+                b_dist = tfp.distributions.Normal(loc=self._b_mu,
+                                                scale=tf.nn.softplus(self._b_rho))
+
+                b = b_dist.sample()
+                self._kl_divergence += tf.reduce_sum(b_dist.log_prob(b) \
+                                                        - self._prior_dist.log_prob(b))
+
+                # a = x'W, where W ~ q(W | mu, theta), b ~ q(b | mu, theta)
+                outputs += b
+
+        elif self._reparametrisation == 'local' and self.prior == 'gaussian':
+
+            hidden_mu = tf.matmul(inputs, self._w_mu) \
+                + self._b_mu if self._use_bias else 0
+
+            w_sigma = tf.nn.softplus(self._w_rho)
+            b_sigma = tf.nn.softplus(self._b_rho) if self._use_bias else 0
+
+            hidden_sigma = tf.math.sqrt(
+                tf.matmul(tf.math.square(inputs),
+                          tf.math.square(w_sigma))
+                + tf.math.square(b_sigma))
+
+            a_dist = tfp.distributions.Normal(loc=hidden_mu,
+                                              scale=hidden_sigma)
+
+            outputs = a_dist.sample()
 
 
-            # a = x'W, where W ~ q(W | mu, theta), b ~ q(b | mu, theta)
-            outputs += b
+            # self._kl_divergence = tf.reduce_sum(a_dist.log_prob(outputs) -
+            #                                     get_reparameterized_log_prob_with_gaussian_prior(self._prior_dist, inputs, outputs))
+            self._kl_divergence = tf.reduce_sum(
+                kl_normal_normal(mu1=self._w_mu,
+                                 mu2=self._prior_dist.mean(),
+                                 sigma1=w_sigma,
+                                 sigma2=self._prior_dist.stddev()))
+            if self._use_bias:
+                self._kl_divergence += tf.reduce_sum(
+                    kl_normal_normal(mu1=self._b_mu,
+                                     mu2=self._prior_dist.mean(),
+                                     sigma1=b_sigma,
+                                     sigma2=self._prior_dist.stddev()))
 
+        assert outputs is not None
         return outputs
 
 
@@ -387,35 +532,3 @@ class VarLinear(snt.AbstractModule):
         self._ensure_is_connected()
         return tf.nn.softplus(self._b_rho)
 
-# ==============================================================================
-# Auxiliary functions
-# ==============================================================================
-
-def create_gaussian_prior(params):
-    prior = tfp.distributions.Normal(loc=params["mu"], scale=tf.exp(-params["sigma"]))
-    return prior
-
-def create_mixture_prior(params):
-    prior = tfp.distributions.Mixture(
-        cat = tfp.distributions.Categorical(probs=[params["mix_prop"], 1. - params["mix_prop"]]),
-        components=[
-            tfp.distributions.Normal(loc=0., scale=tf.exp(-params["sigma1"])),
-            tfp.distributions.Normal(loc=0., scale=tf.exp(-params["sigma2"])),
-        ])
-    return prior
-
-def neg_log_prob_with_categorical(logits, labels):
-    neg_log_prob = tf.nn.sparse_softmax_cross_entropy_with_logits(
-        labels=labels,
-        logits=logits)
-
-    return tf.reduce_sum(neg_log_prob)
-
-def neg_log_prob_with_gaussian(predictions, labels, sigma=1.):
-    neg_log_prob = tf.losses.mean_squared_error(
-        predictions=tf.reshape(predictions, [-1, 1]),
-        labels=labels)
-
-    neg_log_prob = neg_log_prob / (2 * sigma**2) + tf.math.log(sigma)
-
-    return neg_log_prob
