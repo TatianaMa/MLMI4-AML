@@ -55,9 +55,9 @@ def run(args):
     # ==========================================================================
     config = {
         "training_set_size": 60000,
-        "num_epochs": 5,
+        "num_epochs": 20,
         "batch_size": 128,
-        "pruning_percentile": 80,
+        "pruning_percentile": 90,
         "learning_rate": 3e-4,
         "log_freq": 100,
         "checkpoint_name": "_ckpt",
@@ -74,10 +74,10 @@ def run(args):
             "sigma1": 5.,
             "sigma2": 1.,
         },
-        "prior": "mixture",
-        "reparametrisation": 'global',
-        "optimizer": "momentum",
-        "beta": 0.1
+        "prior": "gaussian",
+        "reparametrisation": 'local',
+        "optimizer": "adam",
+        "beta": 0.5
     }
 
     if args.config is not None:
