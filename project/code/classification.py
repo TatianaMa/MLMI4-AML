@@ -108,6 +108,9 @@ def run(args):
     ((train_data, train_labels),
     (test_data, test_labels)) = tf.keras.datasets.mnist.load_data()
 
+    test_img_1 = test_data[0]
+    test_img_2 = test_data[5]
+
     if config["validation_set_percentage"] > 0:
         train_data, val_data, train_labels, val_labels = train_test_split(
             train_data,
@@ -309,8 +312,15 @@ def run(args):
         plt.show()
 
         input_mask = reduced_model.get_unused_input_mask()
-        print(input_mask.shape)
         plt.imshow(input_mask)
+        plt.axis('off')
+        plt.show()
+
+        plt.imshow(input_mask * test_img_1)
+        plt.show()
+
+
+        plt.imshow(input_mask * test_img_2)
         plt.show()
 
 
