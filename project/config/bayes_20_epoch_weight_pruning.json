@@ -1,11 +1,11 @@
 {
     "batch_size": 128,
-    "beta": 1.0,
+    "beta": 0.05,
     "checkpoint_name": "_ckpt",
     "dropout": false,
     "learning_rate": 0.001,
     "log_freq": 100,
-    "num_epochs": 10,
+    "num_epochs": 20,
     "num_units": 400,
     "optimizer": "adam",
     "prior": "mixture",
@@ -16,7 +16,7 @@
         "sigma1": 0.28,
         "sigma2": 4.6
     },
-    "pruning_percentile": 95,
+    "pruning_percentile": 98,
     "training_set_size": 60000,
     "validation_set_percentage": 0.1
 }

@@ -162,6 +162,37 @@ def generate_new_contexts(dataset,
             not_eating_rewards.astype(np.float32),
             eating_rewards.astype(np.float32)), oracle_rewards, oracle_actions, is_edible.to_numpy()
 
+
+def list_slice(tensor, indices, axis):
+    """
+    Taken from
+    https://stackoverflow.com/questions/46881006/slicing-tensor-with-list-tensorflow
+
+    Args
+    ----
+    tensor (Tensor) : input tensor to slice
+    indices ( [int] ) : list of indices of where to perform slices
+    axis (int) : the axis to perform the slice on
+    """
+
+    slices = []   
+
+    ## Set the shape of the output tensor. 
+    # Set any unknown dimensions to -1, so that reshape can infer it correctly. 
+    # Set the dimension in the slice direction to be 1, so that overall dimensions are preserved during the operation
+    shape = tensor.get_shape().as_list()
+    shape[shape==None] = -1
+    shape[axis] = 1
+
+    nd = len(shape)
+
+    for i in indices:   
+        _slice = [slice(None)]*nd
+        _slice[axis] = slice(i,i+1)
+        slices.append(tf.reshape(tensor[_slice], shape))
+
+    return tf.concat(slices, axis=axis)
+
 if __name__ == "__main__":
     ds = load_mushroom_dataset()
     stuff = generate_new_contexts(ds, 10)
@@ -172,3 +203,4 @@ if __name__ == "__main__":
     print(er)
     print(ore)
     print(ora)
+

@@ -275,25 +275,42 @@ def run(args):
 
         model.prune_below_snr(pruning_threshold, verbose=True)
 
-        logits = model(test_data)
+        # logits = model(test_data)
+        # predictions = tf.argmax(input=logits,
+        #                         axis=1)
+
+
+        # Compress
+        reduced_model = model.compress()
+
+        reduced_model(tf.zeros((1, 28, 28)))
+        reduced_model.assign_params()
+        logits = reduced_model(test_data)
         predictions = tf.argmax(input=logits,
                                 axis=1)
         test_accuracy(labels=test_labels,
                     predictions=predictions)
-
-        # Compress
-        model.compress()
 
         acc = 100 * test_accuracy.result()
         print("Pruned {:.2f}% of weights. Accuracy: {}%".format(
             config["pruning_percentile"],
             acc))
 
+        model_size = 2 * model.mu_vector.numpy().shape[0]
+        reduced_model_size = 2 * reduced_model.mu_vector.numpy().shape[0]
+
+        print("Model parameter count: {}, Reduced model parameter count: {}, compression: {:.2f}%".format(model_size, reduced_model_size, float(reduced_model_size) / model_size * 100) )
+
         plt.hist(snr_vector, bins=np.arange(min(snr_vector), max(snr_vector) + binwidth, binwidth))
         plt.axvline(x=pruning_threshold, color='tab:red')
         plt.xlabel('Signal-To-Noise Ratio (dB)')
         plt.ylabel('Density')
         plt.title('Histogram of the Signal-To-Noise ratio over all weights in the network')
+        plt.show()
+
+        input_mask = reduced_model.get_unused_input_mask()
+        print(input_mask.shape)
+        plt.imshow(input_mask)
         plt.show()
 
 

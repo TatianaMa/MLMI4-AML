@@ -1,8 +1,10 @@
+import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 import sonnet as snt
 
 from compression import eliminate_dead_neurons
+from utils import list_slice
 
 class VarEstimator(snt.AbstractModule):
     """
@@ -58,11 +60,24 @@ class VarEstimator(snt.AbstractModule):
         return tfp.distributions.Normal(loc=self.mu_vector, scale=self.sigma_vector).sample()
 
     def compress(self):
-        eliminate_dead_neurons(w_mus=[layer.w_mu.numpy() for layer in self._layers],
+        input_indices, w_mus, w_sigmas, b_mus, b_sigmas = \
+            eliminate_dead_neurons(w_mus=[layer.w_mu.numpy() for layer in self._layers],
                                w_sigmas=[layer.w_sigma.numpy() for layer in self._layers],
                                b_mus=[layer.b_mu.numpy() for layer in self._layers],
                                b_sigmas=[layer.b_sigma.numpy() for layer in self._layers],
                                activations=[tf.nn.relu, tf.nn.relu, lambda x: x])
+
+        reduced_model = ReducedVarMNIST(prior=self.prior,
+                                        w_mus=w_mus,
+                                        w_sigmas=w_sigmas,
+                                        b_mus=b_mus,
+                                        b_sigmas=b_sigmas,
+                                        input_indices=input_indices)
+
+        #print([w_mu.shape for w_mu in w_mus])
+        #print([b_mu.shape for b_mu in b_mus])
+        return reduced_model
+
 
 
 class VarMushroomRL(VarEstimator):
@@ -196,6 +211,85 @@ class VarMNIST(VarEstimator):
 
         # Second linear layer
         linear_2 = VarLinear(output_size=self.units,
+                             prior=self.prior)
+
+        dense = linear_2(dense)
+        dense = tf.nn.relu(dense)
+
+        # Final linear layer
+        linear_out = VarLinear(output_size=10,
+                               prior=self.prior)
+
+        logits = linear_out(dense)
+
+        self._layers = [linear_1, linear_2, linear_out]
+
+        return logits
+
+
+class ReducedVarMNIST(VarEstimator):
+    def __init__(self,
+                 input_indices,
+                 w_mus,
+                 w_sigmas,
+                 b_mus,
+                 b_sigmas,
+                 prior,
+                 name="reduced_var_mnist",
+                 **kwargs):
+
+        super(ReducedVarMNIST, self).__init__(prior=prior,
+                                              name=name)
+
+        self._w_mus = w_mus
+        self._w_sigmas = w_sigmas
+        self._b_mus = b_mus
+        self._b_sigmas = b_sigmas
+        self._input_indices = input_indices
+
+
+    def get_unused_input_mask(self):
+        mask = np.zeros((28 * 28,), dtype=np.float32)
+
+        mask[self._input_indices] = 1
+
+        return mask.reshape((28, 28))
+
+
+    def assign_params(self):
+
+        for i, layer in enumerate(self._layers):
+
+            tf.assign(layer.w_mu, tf.convert_to_tensor(self._w_mus[i]))
+            tf.assign(layer.b_mu, tf.convert_to_tensor(self._b_mus[i]))
+
+            tf.assign(layer.w_rho, tf.contrib.distributions.softplus_inverse(
+                tf.convert_to_tensor(self._w_sigmas[i])))
+            tf.assign(layer.b_rho, tf.contrib.distributions.softplus_inverse(
+                tf.convert_to_tensor(self._b_sigmas[i])))
+
+
+    def _build(self, inputs):
+
+        num_units = [w.shape[1] for w in self._w_mus]
+        #print("Units: {}".format(num_units))
+
+        # Flatten input
+        flatten = snt.BatchFlatten()
+        flattened = flatten(inputs)
+
+        # Only retain the ones we didn't throw out
+        flattened = list_slice(flattened, self._input_indices, axis=1)
+
+        # First linear layer
+        linear_1 = VarLinear(output_size=num_units[0],
+                             prior=self.prior)
+
+        dense = linear_1(flattened)
+        dense = tf.nn.relu(dense)
+
+        # Second linear layer
+        linear_2 = VarLinear(output_size=num_units[1],
                              prior=self.prior)
 
         dense = linear_2(dense)
@@ -419,3 +513,4 @@ def neg_log_prob_with_gaussian(predictions, labels, sigma=1.):
     neg_log_prob = neg_log_prob / (2 * sigma**2) + tf.math.log(sigma)
 
     return neg_log_prob
+
