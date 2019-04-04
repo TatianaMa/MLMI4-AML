@@ -70,12 +70,12 @@ def eliminate_dead_neurons(w_mus, w_sigmas, b_mus, b_sigmas, activations):
         w_sigmas[i] = w_sigma[:, keep_indices]
 
         # Remove rows on next layer and absorb dead neurons into biases
-        if i > 0:
-            w_mus[i - 1] = w_mus[i - 1][keep_indices, :]
-            w_sigmas[i - 1] = w_sigmas[i - 1][keep_indices, :]
+        if i < num_layers - 1:
+            w_mus[i + 1] = w_mus[i + 1][keep_indices, :]
+            w_sigmas[i + 1] = w_sigmas[i + 1][keep_indices, :]
 
-            b_mus[i - 1] = b_mus[i - 1][keep_indices]
-            b_sigmas[i - 1] = b_sigmas[i - 1][keep_indices]
+            b_mus[i + 1] = b_mus[i + 1][keep_indices]
+            b_sigmas[i + 1] = b_sigmas[i + 1][keep_indices]
         else:
             kept_input_indices = keep_indices
 

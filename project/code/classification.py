@@ -282,7 +282,7 @@ def run(args):
                     predictions=predictions)
 
         # Compress
-        # model.compress()
+        model.compress()
 
         acc = 100 * test_accuracy.result()
         print("Pruned {:.2f}% of weights. Accuracy: {}%".format(
